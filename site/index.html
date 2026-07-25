@@ -1,0 +1,2016 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sekisho — High Level Design</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1f24;
+    --muted: #6b7280;
+    --faint: #9aa1a9;
+    --accent: #1d4ed8;
+    --accent-soft: #eef2ff;
+    --border: #e5e7eb;
+    --border-strong: #d3d7dc;
+    --code-bg: #f8f9fb;
+    --head-rule: #1a1f24;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.8;
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout { display: none; max-width: 1240px; margin: 0 auto; }
+  html[lang="ja"] #layout-ja { display: flex; }
+  html[lang="en"] #layout-en { display: flex; }
+
+  /* ---- TOC ---- */
+  nav.toc {
+    position: sticky; top: 0; align-self: flex-start;
+    width: 256px; flex-shrink: 0;
+    max-height: 100vh; overflow-y: auto;
+    padding: 3rem 1.25rem 3rem 2rem;
+    font-size: 0.8rem;
+    border-right: 1px solid var(--border);
+  }
+  nav.toc .toc-title {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    color: var(--faint); text-transform: uppercase; margin-bottom: 0.9rem;
+  }
+  nav.toc a {
+    display: flex; gap: 0.5em;
+    color: var(--muted); text-decoration: none;
+    padding: 0.22rem 0.6rem; margin-left: -0.6rem;
+    border-radius: 5px; line-height: 1.5;
+  }
+  nav.toc a .no { color: var(--faint); font-variant-numeric: tabular-nums; flex-shrink: 0; width: 2em; }
+  nav.toc a:hover { color: var(--fg); background: #f3f4f6; }
+  nav.toc a.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  nav.toc a.active .no { color: var(--accent); }
+  nav.toc a.toc-h2 { padding-left: 2.1rem; font-size: 0.76rem; }
+  nav.toc a.toc-h3 { padding-left: 3.2rem; font-size: 0.74rem; }
+  nav.toc a.toc-h3 .no { width: 2.6em; }
+
+  /* ---- Main column ---- */
+  main { flex: 1; min-width: 0; max-width: 800px; padding: 3rem 3rem 8rem; }
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; }
+    html[lang="ja"] #layout-ja, html[lang="en"] #layout-en { display: flex; }
+    nav.toc { position: static; width: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--border); padding: 1.5rem 1.25rem; }
+    main { padding: 1.5rem 1.25rem 5rem; }
+  }
+
+  /* ---- Document header ---- */
+  header.cover { margin-bottom: 3.5rem; }
+  header.cover .kicker {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.75rem;
+  }
+  header.cover h1 {
+    font-size: 2.3rem; line-height: 1.25; margin: 0 0 0.75rem;
+    letter-spacing: -0.015em; border: none; padding: 0;
+  }
+  header.cover .subtitle { color: var(--muted); margin: 0 0 1.75rem; font-size: 1.02rem; }
+  .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    border-top: 2px solid var(--head-rule); border-bottom: 1px solid var(--border);
+    padding: 0.9rem 0; gap: 0.25rem 1.5rem;
+  }
+  .meta-grid div { font-size: 0.85rem; }
+  .meta-grid dt { color: var(--faint); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 0; }
+  .meta-grid dd { margin: 0.1rem 0 0; font-weight: 500; }
+  .badge {
+    display: inline-block; font-size: 0.72rem; font-weight: 700;
+    color: #92400e; background: #fef3c7; border-radius: 999px;
+    padding: 0.05rem 0.6rem; vertical-align: 1px;
+  }
+
+  /* ---- Headings ---- */
+  h2 {
+    font-size: 1.45rem; line-height: 1.4; letter-spacing: -0.01em;
+    margin: 4rem 0 1.1rem; padding-top: 1.6rem;
+    border-top: 2px solid var(--head-rule);
+    scroll-margin-top: 1.25rem;
+  }
+  h3 {
+    font-size: 1.05rem; margin: 2.4rem 0 0.7rem;
+    scroll-margin-top: 1.25rem;
+  }
+  h4 { font-size: 0.95rem; margin: 2rem 0 0.6rem; scroll-margin-top: 1.25rem; }
+  h2 .no, h3 .no, h4 .no { color: var(--accent); margin-right: 0.5em; font-variant-numeric: tabular-nums; }
+
+  a { color: var(--accent); text-decoration: none; }
+  main a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.4em; }
+  li { margin: 0.3em 0; }
+  li::marker { color: var(--faint); }
+
+  /* ---- Code ---- */
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 0.1em 0.4em; border-radius: 4px; }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.1rem 1.35rem;
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+  pre code { background: none; border: none; padding: 0; }
+
+  /* ---- Figures ---- */
+  figure { margin: 1.75rem 0; }
+  figure pre { margin: 0; }
+  figure svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+  figcaption {
+    text-align: center; color: var(--muted); font-size: 0.8rem;
+    margin-top: 0.6rem;
+  }
+  figcaption .fig-no { font-weight: 700; color: var(--fg); margin-right: 0.5em; }
+
+  /* ---- Tables ---- */
+  .tablewrap { overflow-x: auto; margin: 1.4rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; line-height: 1.65; }
+  caption {
+    caption-side: top; text-align: left; color: var(--muted); font-size: 0.8rem;
+    padding-bottom: 0.5rem;
+  }
+  caption .tbl-no { font-weight: 700; color: var(--fg); margin-right: 0.5em; }
+  th {
+    text-align: left; font-weight: 700; font-size: 0.82rem;
+    border-bottom: 2px solid var(--head-rule);
+    padding: 0.45rem 0.8rem;
+    white-space: nowrap;
+  }
+  td { border-bottom: 1px solid var(--border); padding: 0.55rem 0.8rem; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 1px solid var(--border-strong); }
+
+  /* ---- Callouts ---- */
+  .principle {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1.3rem;
+    margin: 1.6rem 0;
+  }
+  .principle .label {
+    display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.15rem;
+  }
+  .caution {
+    background: #fffbeb;
+    border-left: 3px solid #d97706;
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1.3rem;
+    margin: 1.6rem 0;
+  }
+  .caution .label {
+    display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: #b45309; margin-bottom: 0.15rem;
+  }
+
+  strong { font-weight: 700; }
+
+  /* ---- Language switch ---- */
+  .lang-switch { text-align: right; font-size: 0.78rem; color: var(--faint); margin-bottom: 0.75rem; }
+  .lang-switch a { color: var(--accent); cursor: pointer; }
+  .lang-switch .current { font-weight: 700; color: var(--fg); }
+
+  /* ---- Print ---- */
+  @media print {
+    nav.toc { display: none; }
+    main { max-width: none; padding: 0; }
+    h2 { break-after: avoid; }
+    pre, figure, .tablewrap { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================================================================= -->
+<!-- 日本語版 / Japanese edition                                              -->
+<!-- ======================================================================= -->
+<div class="layout" id="layout-ja">
+<nav class="toc" aria-label="目次">
+  <div class="toc-title">Contents</div>
+  <a href="#background"><span class="no">1</span>背景と課題</a>
+  <a class="toc-h2" href="#problem"><span class="no">1.1</span>課題: 状態の欠如と構造の喪失</a>
+  <a class="toc-h3" href="#pdu-anatomy"><span class="no">1.1.1</span>SNMP Trap と varbind</a>
+  <a class="toc-h3" href="#flattening"><span class="no">1.1.2</span>テキスト平坦化の副作用</a>
+  <a href="#ontology"><span class="no">2</span>監視の概念モデル</a>
+  <a class="toc-h2" href="#relations"><span class="no">2.1</span>概念間の関係</a>
+  <a class="toc-h2" href="#boundary-rules"><span class="no">2.2</span>境界を守る3つのルール</a>
+  <a class="toc-h2" href="#legacy-terms"><span class="no">2.3</span>従来ツールとの用語対応</a>
+  <a href="#scope"><span class="no">3</span>スコープ</a>
+  <a href="#architecture"><span class="no">4</span>アーキテクチャ</a>
+  <a href="#matching"><span class="no">5</span>マッチングモデル</a>
+  <a class="toc-h2" href="#trap-anatomy"><span class="no">5.1</span>Trapの解剖学</a>
+  <a class="toc-h2" href="#routing-table"><span class="no">5.2</span>ルーティングテーブル</a>
+  <a class="toc-h2" href="#stateful-rules"><span class="no">5.3</span>statefulルール 3パターン</a>
+  <a href="#datastore"><span class="no">6</span>データストア</a>
+  <a href="#alarm-stream"><span class="no">7</span>alarm.* ストリーム</a>
+  <a href="#mcp"><span class="no">8</span>MCPサーバ</a>
+  <a href="#llm"><span class="no">9</span>LLMプロバイダ</a>
+  <a href="#deploy"><span class="no">10</span>デプロイ</a>
+  <a href="#security"><span class="no">11</span>セキュリティモデル</a>
+  <a href="#reliability"><span class="no">12</span>信頼性設計</a>
+  <a href="#milestones"><span class="no">13</span>マイルストーン</a>
+  <a href="#open-questions"><span class="no">14</span>未決事項</a>
+</nav>
+<main>
+
+<header class="cover">
+  <div class="lang-switch"><span class="current">日本語</span> · <a data-setlang="en">English</a></div>
+  <div class="kicker">Design Doc</div>
+  <h1>sekisho — High Level Design</h1>
+  <p class="subtitle">SNMP Trap の受信・解釈・状態管理を中核に据えた、ルーティングテーブル型のネットワーク監視エンジン。</p>
+  <dl class="meta-grid">
+    <div><dt>Status</dt><dd><span class="badge">Draft</span></dd></div>
+    <div><dt>Codename</dt><dd>sekisho(関所)</dd></div>
+    <div><dt>Last Updated</dt><dd>2026-07-25</dd></div>
+    <div><dt>Scope</dt><dd>コアエンジン(Alarm 管理まで)</dd></div>
+    <div><dt>License</dt><dd>Apache-2.0 + DCO</dd></div>
+  </dl>
+  <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;">
+    正式名称は未定。
+  </p>
+</header>
+
+<h2 id="background"><span class="no">1</span>背景と課題</h2>
+<p>
+近年のネットワーク装置監視は、gNMI に代表されるストリーミングテレメトリ(モデル駆動テレメトリ)へと
+向かっている。しかし多くの通信事業者では、これらに対応しないレガシーな装置が依然として稼働しており、
+SNMP Trap ベースの監視が数多く残っている。装置負荷の制約からポーリング頻度を上げられない環境では、
+Trap が実質的に唯一の監視信号となる。ところが、広く運用されている OSS のツールチェーンは
+Trap をテキスト行として扱うものが主流のまま長年更新されておらず、宣言的な状態管理・
+過去イベントへのバックテスト・ルールの git 管理といった現代的な開発体験を備えた
+Trap 監視基盤は見当たらない。
+</p>
+
+<h3 id="problem"><span class="no">1.1</span>課題: 状態を持たない Trap と、構造を捨てるパイプライン</h3>
+<p>Trap 監視の課題は 2 層に分けて捉える必要がある。</p>
+<ol>
+<li><strong>本質的な課題 — Trap は状態(state)を持たない。</strong>監視が答えたいのは
+「今どこが障害中か」という<em>状態</em>だが、Trap は「linkDown が届いた」という一瞬の
+<em>イベント</em>でしかない。イベントから状態を再構築する仕組み(raise と clear の対応づけ)は、
+Trap を使う限り誰かが必ず解かなければならない。これはプロトコルの性質であり、
+どのツールを使っても消えない</li>
+<li><strong>偶有的な課題 — 既存パイプラインが構造を捨てるため、1 を解くことが困難になる。</strong>
+状態の同一性(「どの装置のどのポートか」= 状態キー)は varbind のインスタンス添字と値にしか
+入っていないのに、既存パイプラインは入口でまさにそれをテキストに溶かしてしまう(§1.1.2)。
+構造を失った時点で、状態キーの抽出も raise/clear の対応づけも regex 頼みになる</li>
+</ol>
+<p>
+つまり、<strong>解くべき本質は 1 であり、2 はその解決を妨げている障害</strong>である。sekisho は
+2 を「PDU を構造のまま扱う」ことで取り除き(§1.1.1、§5.1)、1 を状態エンジン(§5.3)で
+正面から解く。まず §1.1.1 で、Trap が実際に運んでいるデータの形を具体例で確認する。
+</p>
+
+<h4 id="pdu-anatomy"><span class="no">1.1.1</span>SNMP Trap と varbind — 実際に届いているもの</h4>
+<p>
+SNMPv2 の Trap PDU(Protocol Data Unit)は varbind(OID + <strong>型</strong> + 値)のリストである。
+具体例として、装置 <code>10.0.0.1</code> の 1000 番インターフェース(ifIndex = 1000)がダウンした
+ときに届く linkDown Trap の中身を見る。
+</p>
+<figure>
+<pre>varbind[0]  1.3.6.1.2.1.1.3.0          sysUpTime.0        = TimeTicks: 512345600
+varbind[1]  1.3.6.1.6.3.1.1.4.1.0      snmpTrapOID.0      = OID: 1.3.6.1.6.3.1.1.5.3(IF-MIB::linkDown)
+varbind[2]  1.3.6.1.2.1.2.2.1.1.1000   ifIndex.1000       = INTEGER: 1000
+varbind[3]  1.3.6.1.2.1.2.2.1.7.1000   ifAdminStatus.1000 = INTEGER: 1(up)
+varbind[4]  1.3.6.1.2.1.2.2.1.8.1000   ifOperStatus.1000  = INTEGER: 2(down)</pre>
+<figcaption><span class="fig-no">図 1</span>linkDown Trap PDU の中身(装置 10.0.0.1、ifIndex = 1000 の例)</figcaption>
+</figure>
+<p>読み解くポイントは 3 つある。</p>
+<ol>
+<li><strong>先頭 2 つの varbind は SNMPv2 標準で固定されている</strong>。<code>sysUpTime.0</code>(装置の稼働時間)と
+<code>snmpTrapOID.0</code>(この Trap が「何であるか」)。受信側は varbind[1] の値を見るだけで
+「これは linkDown である」と機械的に判定できる</li>
+<li><strong>3 つ目以降の varbind は MIB が宣言している</strong>。IF-MIB の NOTIFICATION-TYPE 定義(図 3)が
+「linkDown は ifIndex, ifAdminStatus, ifOperStatus を運ぶ」と宣言し、それぞれの値の型と列挙も
+MIB が定義している。つまり <strong>Trap にはスキーマが存在する</strong></li>
+<li><strong>varbind の OID は「どのオブジェクトか」と「どの個体か」に分解できる</strong>。
+<code>1.3.6.1.2.1.2.2.1.8.1000</code> は、オブジェクト <code>ifOperStatus</code>(<code>…2.2.1.8</code>)に
+インスタンス添字 <code>.1000</code>(1000 番のインターフェース)が付いたものである</li>
+</ol>
+<figure>
+<svg viewBox="0 0 640 150" role="img" aria-label="OID の分解" style="max-width:560px">
+  <rect x="30" y="30" width="370" height="46" rx="8" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="215" y="59" text-anchor="middle" font-size="20" font-family="ui-monospace, Menlo, monospace" fill="#1a1f24">1.3.6.1.2.1.2.2.1.8</text>
+  <rect x="404" y="30" width="120" height="46" rx="8" fill="#fffbeb" stroke="#d97706"/>
+  <text x="464" y="59" text-anchor="middle" font-size="20" font-family="ui-monospace, Menlo, monospace" fill="#1a1f24">.1000</text>
+  <line x1="215" y1="80" x2="215" y2="102" stroke="#1d4ed8"/>
+  <line x1="464" y1="80" x2="464" y2="102" stroke="#d97706"/>
+  <text x="215" y="122" text-anchor="middle" font-size="13" fill="#1d4ed8">オブジェクト = ifOperStatus(どの値か)</text>
+  <text x="464" y="122" text-anchor="middle" font-size="13" fill="#b45309">インスタンス添字(どの個体か)</text>
+</svg>
+<figcaption><span class="fig-no">図 2</span>varbind OID の分解 — オブジェクトと個体が 1 本の OID に同居する</figcaption>
+</figure>
+<figure>
+<pre>linkDown NOTIFICATION-TYPE
+    OBJECTS { ifIndex, ifAdminStatus, ifOperStatus }    -- この Trap が運ぶ varbind の宣言
+    STATUS  current
+    ::= { snmpTraps 3 }
+
+ifOperStatus OBJECT-TYPE
+    SYNTAX  INTEGER { up(1), down(2), testing(3), … }   -- 値は型付きの列挙</pre>
+<figcaption><span class="fig-no">図 3</span>IF-MIB の定義(抜粋)— Trap のスキーマは MIB に書かれている</figcaption>
+</figure>
+<p>整理すると、1 つの Trap は構造的に 3 種類の情報を運んでいる。</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 1</span>Trap PDU が運ぶ 3 種類の情報</caption>
+<thead><tr><th>情報</th><th>在り処</th><th>例</th></tr></thead>
+<tbody>
+<tr><td><strong>種別</strong>(何が起きた)</td><td>第 2 varbind <code>snmpTrapOID.0</code> の値</td><td><code>1.3.6.1.6.3.1.1.5.3</code> = IF-MIB::linkDown</td></tr>
+<tr><td><strong>個体</strong>(どこで起きた)</td><td>各 varbind の OID 末尾のインスタンス添字 / 索引 varbind の値</td><td><code>ifOperStatus.1000</code> の <code>.1000</code></td></tr>
+<tr><td><strong>属性</strong>(どんな状態か)</td><td>varbind の型付きの値</td><td><code>ifOperStatus = INTEGER 2</code>(MIB の列挙で down(2))</td></tr>
+</tbody>
+</table></div>
+<p>
+つまり Trap は本来、<strong>スキーマ付きの構造化イベント</strong>である。図 1 の例だけからでも
+「種別 = linkDown、個体 = ifIndex 1000、属性 = ifOperStatus down(2)」が、正規表現を一切使わずに
+機械的に取り出せる。
+</p>
+
+<h4 id="flattening"><span class="no">1.1.2</span>根本課題: 既存パイプラインが PDU をテキストに平坦化する副作用</h4>
+<p>
+典型的な snmptrapd → 従来型監視サーバのパイプラインは、この構造化データを
+<strong>入口で一度テキストに平坦化してしまう</strong>
+(snmptrapd の整形出力 → 連携スクリプト → テキストログの 1 行)。
+図 1 の Trap は、平坦化されるとたとえば次の 1 行になる。
+</p>
+<figure>
+<pre>10:03:21 2026/07/25 .1.3.6.1.6.3.1.1.5.3 Normal "General" 10.0.0.1 - .1.3.6.1.2.1.2.2.1.1.1000 = INTEGER: 1000 .1.3.6.1.2.1.2.2.1.7.1000 = INTEGER: up(1) .1.3.6.1.2.1.2.2.1.8.1000 = INTEGER: down(2)</pre>
+<figcaption><span class="fig-no">図 4</span>図 1 と同じ Trap が平坦化された後の姿(テキストログの 1 行)</figcaption>
+</figure>
+<p>
+図 1 で分かれていた種別・個体・属性・型・列挙定義が、1 本の文字列に融けている。
+この行に対する監視ルールは、たとえば次のような正規表現トリガーにならざるを得ない。
+</p>
+<figure>
+<pre>find(last(/router01/snmptrap["General"]), "linkDown") = 1
+and find(last(/router01/snmptrap["General"]), "\.1000 = ") = 1
+    # ifIndex 1000 を意図した式。だが ".1000 = " は他の varbind の添字や
+    # 値の "1000" にもマッチし得るし、意図はコードから読み取れない</pre>
+<figcaption><span class="fig-no">図 5</span>平坦化されたテキストに対する正規表現トリガーの例</figcaption>
+</figure>
+<p>
+型・OID の木構造・インスタンス添字・列挙定義を失った代償として、以降のすべての処理が
+<strong>regex による文字列マッチ</strong>を強いられる。これが根本課題であり、
+現場で広く観測される以下の症状はすべてここから派生する。
+</p>
+<ul>
+<li>トリガーはテキストへの正規表現マッチで書くしかない。式が読めず、テストもできない。
+種別・個体・属性の区別が失われているため、条件の意図がコードから読み取れない</li>
+<li>インスタンス添字が文字列に埋没するため、インターフェース単位・ボード単位の障害管理には
+LLD(ローレベルディスカバリ)の迂回が必要で、Trap 駆動と相性が悪い。
+結果として網羅的なトリガー整備を諦めるのが合理的になってしまう</li>
+<li>どの正規表現にもマッチしなかった Trap は fallback に流れて事実上消滅し、観測手段がない</li>
+<li>平坦化後のテキストしか残らないため、トリガーの追加・変更を過去データで検証できず、
+メンテナンスが停滞する</li>
+</ul>
+<div class="principle">
+<span class="label">設計原理</span>
+sekisho はこの逆を行く: <strong>PDU を構造のまま受信・保存・照合し、テキスト化は表示の最終段でのみ行う</strong>(<a href="#trap-anatomy">§5.1</a>)。
+あわせて、<strong>判定は決定的ルール、LLM はルール作成の支援に限定、その接点を MCP にする</strong>。
+</div>
+
+<h2 id="ontology"><span class="no">2</span>監視の概念モデル</h2>
+<p>
+本章では、この設計で使う概念を定義する。以降の議論はすべてこの 4 つの概念の区別の上に
+成り立つため、それぞれの境界を最初に明確にしておく。
+</p>
+<figure>
+<svg viewBox="0 0 680 540" role="img" aria-label="監視概念の 4 層" style="max-width:680px">
+  <defs>
+    <marker id="arl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <rect x="190" y="10" width="300" height="46" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="340" y="30" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1f24">装置</text>
+  <text x="340" y="48" text-anchor="middle" font-size="11" fill="#6b7280">「何が観測されたか」</text>
+  <line x1="340" y1="56" x2="340" y2="92" stroke="#6b7280" marker-end="url(#arl)"/>
+  <text x="352" y="78" font-size="11.5" fill="#6b7280">Trap 送信(ingress event)</text>
+  <rect x="110" y="96" width="460" height="66" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="130" y="123" font-size="15" font-weight="700" fill="#1d4ed8">Event 層</text>
+  <text x="130" y="145" font-size="12.5" fill="#1a1f24">Trap = 生イベント。不変・追記のみ・全量保存</text>
+  <rect x="452" y="107" width="102" height="22" rx="11" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="503" y="122" text-anchor="middle" font-size="11" fill="#1d4ed8">ClickHouse</text>
+  <line x1="340" y1="162" x2="340" y2="200" stroke="#6b7280" marker-end="url(#arl)"/>
+  <text x="352" y="185" font-size="11.5" fill="#6b7280">ルーティングテーブルによる解釈</text>
+  <rect x="110" y="204" width="460" height="66" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="130" y="231" font-size="15" font-weight="700" fill="#1d4ed8">Alarm 層</text>
+  <text x="130" y="253" font-size="12.5" fill="#1a1f24">状態オブジェクト。raise / clear / flapping</text>
+  <rect x="452" y="215" width="102" height="22" rx="11" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="503" y="230" text-anchor="middle" font-size="11" fill="#1d4ed8">PostgreSQL</text>
+  <line x1="340" y1="270" x2="340" y2="308" stroke="#6b7280" marker-end="url(#arl)"/>
+  <text x="352" y="293" font-size="11.5" fill="#6b7280">alarm.* ストリーム(状態遷移の通知)</text>
+  <rect x="110" y="312" width="460" height="66" rx="10" fill="#ffffff" stroke="#9aa1a9" stroke-dasharray="6 4"/>
+  <text x="130" y="339" font-size="15" font-weight="700" fill="#6b7280">Alert 層</text>
+  <text x="130" y="361" font-size="12.5" fill="#6b7280">通知の判断。silence / 集約 / エスカレーション</text>
+  <rect x="428" y="323" width="126" height="22" rx="11" fill="#f8f9fb" stroke="#9aa1a9"/>
+  <text x="491" y="338" text-anchor="middle" font-size="11" fill="#6b7280">将来層・非スコープ</text>
+  <line x1="340" y1="378" x2="340" y2="416" stroke="#6b7280" marker-end="url(#arl)"/>
+  <rect x="110" y="420" width="460" height="66" rx="10" fill="#ffffff" stroke="#9aa1a9" stroke-dasharray="6 4"/>
+  <text x="130" y="447" font-size="15" font-weight="700" fill="#6b7280">Incident</text>
+  <text x="130" y="469" font-size="12.5" fill="#6b7280">人間のワークフロー。担当・タイムライン・振り返り</text>
+  <rect x="452" y="431" width="102" height="22" rx="11" fill="#f8f9fb" stroke="#9aa1a9"/>
+  <text x="503" y="446" text-anchor="middle" font-size="11" fill="#6b7280">別システム</text>
+</svg>
+<figcaption><span class="fig-no">図 6</span>監視概念の 4 層と担当ストア</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 2</span>4 概念の定義</caption>
+<thead><tr><th>概念</th><th>本質</th><th>主語</th><th>可変性</th><th>生成者</th></tr></thead>
+<tbody>
+<tr><td><strong>Event</strong></td><td>観測の<strong>事実</strong>。「linkDown という Trap が 10:03:21 に届いた」</td><td>装置</td><td>不変(追記のみ)</td><td>装置</td></tr>
+<tr><td><strong>Alarm</strong></td><td>事実の<strong>解釈</strong>。「この IF は 10:03:21 から障害中」</td><td>リソース(状態キー)</td><td>状態遷移する</td><td>ルールエンジン</td></tr>
+<tr><td><strong>Alert</strong></td><td>解釈への<strong>反応</strong>。「これを夜間当番に通知する」</td><td>人・チーム</td><td>ポリシー次第</td><td>Alert 層</td></tr>
+<tr><td><strong>Incident</strong></td><td>人間の<strong>対応</strong>。担当・タイムライン・振り返り</td><td>運用組織</td><td>ワークフロー</td><td>別システム</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="relations"><span class="no">2.1</span>概念間の関係</h3>
+<ul>
+<li><strong>Event : Alarm = N : 0..1</strong>。複数の Event が 1 つの Alarm の遷移を駆動する
+(linkDown が raise し、linkUp が clear する)。Alarm を生まない Event
+(drop されたもの、unrouted に落ちたもの)も正当な存在であり、消えずに Event 層に残る。
+なお 0..1 は現行スコープで意図的に選んだ制約である(1 つの Event は高々 1 つのルールにマッチし、
+高々 1 つの Alarm に影響する)。装置再起動 Trap による一括 clear のような 1:N の解釈は将来拡張とし、
+その際は対応関係を alarm lifecycle event 側に持たせる</li>
+<li>すべての Event はルーティング結果(<code>route_id</code> / <code>action</code> / 影響した <code>alarm_id</code>)を刻印される。
+これにより Alert → Alarm → 構成 Event → 生 PDU まで<strong>完全な来歴(lineage)を遡れる</strong></li>
+<li>Trap は「Event の一種」であって同義ではない。将来 ICMP 生存確認の状態変化や syslog を
+追加する場合、それらは同じ Event 層の別ソース種別になる</li>
+<li>Alarm の状態遷移そのものも派生イベント(alarm lifecycle event)として記録する。
+イベントには <strong>ingress event</strong>(世界からの入力)と <strong>alarm lifecycle event</strong>(エンジンの出力)
+の 2 系統があり、名前空間を分けて管理する</li>
+</ul>
+
+<h3 id="boundary-rules"><span class="no">2.2</span>境界を守る 3 つのルール</h3>
+<ol>
+<li><strong>Alarm はエンジンだけが作り、Alert はポリシーだけが作る</strong>。Alert 層の操作
+(silence 等)が Alarm の状態に影響を与えることはなく、逆方向の作用は存在しない</li>
+<li><strong>メンテナンスウィンドウは Alert 層の機能である</strong>。メンテナンス中でも Alarm は正しく
+raise/clear されて記録に残り、抑止されるのは通知だけである。これを混ぜてしまうと、
+「メンテナンス中に実は壊れていた」という事実を後から追跡できなくなる</li>
+<li><strong>ack は Alarm 層、silence は Alert 層に属する</strong>。ack は「事実を認知した」という
+注記(監査対象)であり、silence は「この条件は通知するな」という判断である。似ているが別物なので、
+両者は別の API として提供する</li>
+</ol>
+
+<h3 id="legacy-terms"><span class="no">2.3</span>従来型監視ツールとの用語対応</h3>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 3</span>用語対応(従来型監視ツールの経験者の誤読防止)</caption>
+<thead><tr><th>従来型監視ツール</th><th>sekisho</th><th>備考</th></tr></thead>
+<tbody>
+<tr><td>Trap(テキストログの行)</td><td>ingress event</td><td>sekisho では構造化・全量保存</td></tr>
+<tr><td>障害・プロブレム</td><td>Alarm</td><td></td></tr>
+<tr><td>イベント</td><td>alarm lifecycle event</td><td>従来ツールの「イベント」は Event 層ではないことに注意</td></tr>
+<tr><td>トリガー + 復旧条件</td><td>route + stateful rule</td><td>raise/clear を 1 ルールに宣言</td></tr>
+<tr><td>通知アクションの設定</td><td>Alert 層</td><td>sekisho 非スコープ</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="scope"><span class="no">3</span>スコープ</h2>
+<h3><span class="no">3.1</span>スコープ内(コアエンジン)</h3>
+<ul>
+<li>Trap 受信 — <strong>SNMPv1 / v2c / v3 に対応する</strong>。v1 は RFC 3584 の変換で v2 形式に
+正規化し、agent-addr フィールドは装置同定(§5.1)に利用する。v3 は USM(認証・暗号化)に対応し、
+資格情報の管理は §11 で扱う。INFORM(確認応答付き通知)は対象外。経路は当面 snmptrapd forward、
+将来自前 162 受信</li>
+<li>MIB 解決(ベンダ各社の private MIB。未解決 OID は生のまま通す寛容設計)</li>
+<li>アラートルーティングテーブル(snmpTrapOID longest-prefix match + varbind 条件)</li>
+<li>状態エンジン(raise/clear ペアリング、flapping 検出、状態キー)= Alarm 管理</li>
+<li>Event 全量保存と来歴刻印</li>
+<li>alarm.* ストリーム出力(Webhook)+ ack API</li>
+<li>MCP サーバ(unmatched 観測、ルール提案、バックテスト、適用)</li>
+<li>LLM プロバイダ抽象(Bedrock / ローカル LLM)</li>
+<li>REST API(状態エンジン・ルート・イベント検索・ack への唯一のアクセス面)と、その薄い
+クライアントとしての CLI(<code>sekisho</code> コマンド)・Web UI(ルートテーブル + カウンタ、
+Active Alarm List、イベント検索)</li>
+</ul>
+<h3><span class="no">3.2</span>非スコープ</h3>
+<ul>
+<li><strong>Alert 管理</strong>(silence、当番表、集約、エスカレーション)— alarm.* ストリームの購読者として
+将来増設、または Alertmanager 等の既存品を接続</li>
+<li><strong>Incident 管理</strong> — 別システムとして確定。接続点は alarm.* ストリームのみ。
+コアのリポジトリ・プロセス・DB に Incident の概念を持ち込まない</li>
+<li>メトリクスポーリング、gNMI。汎用のイベントソースプラグイン機構も v1 では作らない —
+ソースは内蔵実装とし、概念上の拡張点(§2.1)だけを予約する</li>
+</ul>
+
+<h2 id="architecture"><span class="no">4</span>アーキテクチャ</h2>
+<figure>
+<svg viewBox="0 0 860 640" role="img" aria-label="全体アーキテクチャ">
+  <defs>
+    <marker id="arj" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <rect x="20" y="20" width="170" height="48" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="105" y="49" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1a1f24">ネットワーク装置</text>
+  <line x1="190" y1="44" x2="270" y2="44" stroke="#6b7280" marker-end="url(#arj)"/>
+  <text x="230" y="36" text-anchor="middle" font-size="11" fill="#6b7280">UDP 162</text>
+  <rect x="274" y="20" width="230" height="48" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="389" y="41" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1a1f24">snmptrapd</text>
+  <text x="389" y="58" text-anchor="middle" font-size="11" fill="#6b7280">既存監視サーバ上・設定 1 行追加</text>
+  <line x1="504" y1="44" x2="614" y2="44" stroke="#6b7280" marker-end="url(#arj)"/>
+  <text x="559" y="36" text-anchor="middle" font-size="11" fill="#6b7280">従来どおり</text>
+  <rect x="618" y="20" width="222" height="48" rx="10" fill="#f8f9fb" stroke="#9aa1a9" stroke-dasharray="6 4"/>
+  <text x="729" y="41" text-anchor="middle" font-size="13.5" font-weight="700" fill="#6b7280">既存監視ツール</text>
+  <text x="729" y="58" text-anchor="middle" font-size="11" fill="#6b7280">無変更・並走</text>
+  <line x1="389" y1="68" x2="389" y2="120" stroke="#1d4ed8" marker-end="url(#arj)"/>
+  <text x="400" y="98" font-size="11.5" fill="#1d4ed8">forward udp:1620(varbind 無加工で再送)</text>
+  <rect x="40" y="124" width="560" height="486" rx="14" fill="#ffffff" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="62" y="152" font-size="13" font-weight="700" letter-spacing="2" fill="#1d4ed8">SEKISHO</text>
+  <rect x="70" y="166" width="230" height="52" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="185" y="188" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1f24">受信機 + MIB リゾルバ</text>
+  <text x="185" y="206" text-anchor="middle" font-size="10.5" fill="#6b7280">生 PDU を構造のまま解釈</text>
+  <line x1="185" y1="218" x2="185" y2="258" stroke="#6b7280" marker-end="url(#arj)"/>
+  <rect x="70" y="262" width="230" height="52" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="185" y="284" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1f24">ルーティングテーブル</text>
+  <text x="185" y="302" text-anchor="middle" font-size="10.5" fill="#6b7280">longest-prefix match + where</text>
+  <line x1="300" y1="288" x2="356" y2="288" stroke="#6b7280" marker-end="url(#arj)"/>
+  <text x="328" y="280" text-anchor="middle" font-size="10.5" fill="#6b7280">stateful</text>
+  <rect x="360" y="262" width="210" height="52" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="465" y="284" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1f24">状態エンジン</text>
+  <text x="465" y="302" text-anchor="middle" font-size="10.5" fill="#6b7280">raise / clear / flapping</text>
+  <line x1="185" y1="314" x2="185" y2="352" stroke="#6b7280" marker-end="url(#arj)"/>
+  <rect x="70" y="356" width="230" height="40" rx="10" fill="#f8f9fb" stroke="#9aa1a9"/>
+  <text x="185" y="380" text-anchor="middle" font-size="12" fill="#6b7280">drop(判定のみ・Event は保存)</text>
+  <line x1="185" y1="396" x2="185" y2="434" stroke="#6b7280" marker-end="url(#arj)"/>
+  <rect x="70" y="438" width="230" height="40" rx="10" fill="#fffbeb" stroke="#d97706"/>
+  <text x="185" y="462" text-anchor="middle" font-size="12" fill="#b45309">unrouted バケット(観測対象)</text>
+  <line x1="465" y1="314" x2="465" y2="352" stroke="#6b7280" marker-end="url(#arj)"/>
+  <rect x="360" y="356" width="210" height="44" rx="10" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="465" y="374" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">PostgreSQL</text>
+  <text x="465" y="392" text-anchor="middle" font-size="10.5" fill="#6b7280">Alarm 状態・設定・ドラフト</text>
+  <polyline points="330,288 330,460 356,460" fill="none" stroke="#6b7280" marker-end="url(#arj)"/>
+  <rect x="360" y="438" width="210" height="44" rx="10" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="465" y="456" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">ClickHouse</text>
+  <text x="465" y="474" text-anchor="middle" font-size="10.5" fill="#6b7280">Event 全量(来歴刻印付き)</text>
+  <rect x="70" y="536" width="150" height="44" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="145" y="562" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">MCP サーバ</text>
+  <rect x="240" y="536" width="170" height="44" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="325" y="555" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">LLM プロバイダ</text>
+  <text x="325" y="571" text-anchor="middle" font-size="10" fill="#6b7280">Bedrock / ローカル</text>
+  <rect x="430" y="536" width="140" height="44" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="500" y="562" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">REST API / CLI / UI</text>
+  <line x1="570" y1="288" x2="644" y2="288" stroke="#6b7280" marker-end="url(#arj)"/>
+  <text x="607" y="280" text-anchor="middle" font-size="10.5" fill="#6b7280">alarm.*</text>
+  <rect x="648" y="258" width="192" height="60" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="744" y="282" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">Webhook 配送</text>
+  <text x="744" y="300" text-anchor="middle" font-size="10.5" fill="#6b7280">Alert 層 / Incident 系へ</text>
+</svg>
+<figcaption><span class="fig-no">図 7</span>全体アーキテクチャ(Phase 1: 既存監視との並走構成)</figcaption>
+</figure>
+<div class="principle">
+<span class="label">設計原則</span>
+判定エンジンのホットパスでは LLM を一切呼ばない。判定は常に決定的であり、同じ入力からは必ず同じ結果が再現される。
+</div>
+<p>
+外部インターフェースは <strong>API ファースト</strong>で統一する。Alarm・ルート・イベント検索・ack を
+含む状態エンジンへのアクセスはすべて <strong>REST API</strong> として公開し、Web UI・CLI
+(<code>sekisho</code> コマンド。<code>sekisho route show</code> 等)・MCP サーバは、いずれも同じ API の
+薄いクライアントとして実装する。これにより認証・認可・監査・互換性の管理点が API の 1 箇所に集約される。
+Web UI は React 等のモダンな SPA として実装し、ビルド済みアセットを sekisho バイナリに埋め込んで
+配信する(単一バイナリ配布と起動の簡単さを保ったまま、エンジン・データへのフル機能アクセスを提供する)。
+push 型の契約である alarm.* ストリーム(§7)だけは、この API と並ぶもう 1 つの外部面である。
+</p>
+
+<h2 id="matching"><span class="no">5</span>マッチングモデルとアラートルーティングテーブル</h2>
+
+<h3 id="trap-anatomy"><span class="no">5.1</span>Trap の解剖学 — 3 つの情報の役割分担</h3>
+<p>
+sekisho は、<a href="#pdu-anatomy">§1.1.1</a> で見た 3 種類の情報を次のように使い分ける。この 3 役を混ぜないことが、マッチング設計の核心である。
+</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 4</span>3 役と sekisho での用途</caption>
+<thead><tr><th>#</th><th>情報</th><th>sekisho での役割</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>種別</strong>(snmpTrapOID)</td><td><strong>ルーティングの match 対象</strong>(longest-prefix)</td></tr>
+<tr><td>2</td><td><strong>個体</strong>(インスタンス添字 / 索引 varbind)</td><td><strong>状態キーの抽出元</strong>。マッチには使わない</td></tr>
+<tr><td>3</td><td><strong>属性</strong>(型付きの値)</td><td><strong>条件(where)と遷移判定</strong></td></tr>
+</tbody>
+</table></div>
+<p>
+「varbind 照合 = 文字列マッチ」になるのは SNMP の性質ではなく、既存パイプラインの平坦化の
+アーティファクトである(<a href="#flattening">§1.1.2</a>)。sekisho は PDU を構造のまま保持し、MIB の型情報で照合する。
+</p>
+<p>この前提から導かれるマッチング原則:</p>
+<ol>
+<li><strong>varbind は位置ではなく OID で特定する</strong>。MIB の NOTIFICATION-TYPE 定義(OBJECTS 句)が
+「この Trap はどの varbind を運ぶか」を宣言しているが、ベンダ実装は varbind を追加してくる
+ことがあるため、順序に依存しない</li>
+<li><strong>値の照合はシンボリックに書き、型付きにコンパイルする</strong>。ルールに <code>ifOperStatus: down</code> と
+書けば、エンジンが MIB の列挙定義から <code>(base OID 1.3.6.1.2.1.2.2.1.8, INTEGER 2)</code> に解決して
+比較する。regex は登場しない</li>
+<li><strong>インスタンス添字は分解して取り出す</strong>。受信時に各 varbind を
+<code>(base OID, instance suffix, typed value)</code> に分解する。状態キーは索引 varbind の値
+(<code>{ifIndex}</code>)からも、添字(<code>{instance_of(ifOperStatus)}</code>)からも取れる</li>
+<li><strong>MIB が欠けた varbind は生 OID + 生値のまま通し、生値での照合も許す</strong>(縮退動作)</li>
+</ol>
+<p>
+また、状態キーの素材となる<strong>装置の同定(device identity)</strong>を受信処理の第一級ステージとして
+扱う。装置は (a) パケットの送信元 IP、(b) v1→v2 変換時に付与される <code>snmpTrapAddress.0</code>
+varbind、(c) varbind 内の装置識別子(sysName 等)、(d) インベントリによるマッピング、の優先順で
+<code>device_id</code> に解決される。ルール中の <code>{source}</code> は生の送信元 IP ではなく、
+<strong>この解決済み device_id を指す</strong>(受信方式との適合性は §10.1)。なお ifIndex は装置再起動や
+カード交換で振り直され得るため、状態キーの素材には ifName 等の安定した識別子の併用を検討する。
+</p>
+
+<h3 id="routing-table"><span class="no">5.2</span>ルーティングテーブル</h3>
+<p>
+トリガーではなく「ルートテーブル + ポリシー」として監視ルール全体を設計する。
+<strong>match の対象は snmpTrapOID(種別)であり</strong>、その値は enterprise 配下の木構造を成すため
+longest-prefix match がそのまま成立する。varbind 条件(<code>where</code>)は PBR に相当する。
+</p>
+<figure>
+<pre><code>routes:
+  - match: { trap_oid: 1.3.6.1.6.3.1.1.5.3 }          # IF-MIB::linkDown(specific 優先)
+    action: { stateful: if-linkdown }
+  - match:
+      trap_oid: 1.3.6.1.4.1.&lt;ent&gt;.2.*                  # あるベンダの通知サブツリー
+      where: { alarmSeverity: info }                    # 型付き列挙で照合(regex ではない)
+    action: drop
+  - default:                                           # Default Gateway
+      - drop: { trap_oid: 1.3.6.1.4.1.&lt;ent&gt;.9.* }      # GW 内でさらに prefix 削除
+      - else: { bucket: unrouted }</code></pre>
+<figcaption><span class="fig-no">図 8</span>ルーティングテーブルの骨子(DSL は LLD で確定)</figcaption>
+</figure>
+<ul>
+<li><strong>specific 勝ち</strong>(longest-prefix match)、<strong>default 経由</strong>、<strong>drop</strong> という
+ネットワークエンジニアの語彙・メンタルモデルをそのまま使う</li>
+<li><strong>全ルートにヒットカウンタと最終ヒット時刻</strong>を持つ(描画は図 9)。
+drop ルートにもカウンタを付け、「何を黙って捨てているか」を常時可視化する</li>
+<li>unrouted は Trap が消えていく先ではなく、それ自体が観測対象である。ここからルール提案(<a href="#mcp">§8</a>)が生まれる。
+なお「バケット」は独立した保存先ではない。Event は全量が ClickHouse に入るため、unrouted とは
+<code>route_id = ''</code> が刻印された Event の<strong>論理ビュー</strong>であり、頻度集計は
+Materialized View で常時維持される(保持期間も他の Event と同一)</li>
+<li>ルートとルールはただの YAML ファイルで <strong>git 管理</strong>。レビュー・差分・ロールバックは
+通常の開発フローに乗る</li>
+<li><strong>マッチングは全順序を持ち、決定的である</strong>。ルートは prefix 長 → 定義ファイル内の順序で
+評価され、<code>trap_oid</code> と <code>where</code> の両方が成立した最初のルートが選ばれる。
+重複・曖昧なルートや、MIB で解決できないシンボルを参照するルールは、ロード時に検出して
+エラーまたは警告付き無効化とする</li>
+</ul>
+<p>
+ルートテーブルは、ネットワーク OS の <code>show route</code> と同じ思想で<strong>描画可能</strong>で
+なければならない。正はあくまで YAML の設定ファイルだが、運用者が見るのは常に「評価順に並び、
+カウンタを伴う 1 枚の表」である。CLI(<code>sekisho route show</code>)と Web UI は同じ描画を返す。
+</p>
+<figure>
+<pre>$ sekisho route show
+Codes: S - stateful, D - drop, U - unrouted, * - via default gateway
+
+     snmpTrapOID prefix                     where           action             hits     last seen
+S    1.3.6.1.6.3.1.1.5.3 (linkDown)         -               rule if-linkdown   12,304   3m
+S    1.3.6.1.6.3.1.1.5.4 (linkUp)           -               rule if-linkdown   12,187   3m
+D    1.3.6.1.4.1.&lt;ent&gt;.2.*                  severity=info   drop               88,412   12s
+D*   1.3.6.1.4.1.&lt;ent&gt;.9.*                  -               drop                4,210   1m
+U*   default                                -               unrouted              312   47s</pre>
+<figcaption><span class="fig-no">図 9</span>ルートテーブルの描画(<code>sekisho route show</code>)— 評価順・カウンタ・最終ヒットを 1 枚で示す</figcaption>
+</figure>
+
+<h3 id="stateful-rules"><span class="no">5.3</span>stateful ルール — raise/clear の 3 パターン</h3>
+<p>現実の装置が raise/clear を表現する方法は 3 パターンに大別され、DSL はそのすべてを直接表現できる。</p>
+<p><strong>パターン A: 種別ペア型</strong> — raise と clear が別々の Trap(linkDown / linkUp)。</p>
+<figure>
+<pre><code>rule: if-linkdown
+match: { trap: IF-MIB::linkDown }
+key: "{source}:{ifIndex}"            # 状態の同一性をキーで宣言(LLD 不要)
+transition:
+  raise: { severity: major }
+  clear: { trap: IF-MIB::linkUp, same_key: true }
+flap: { window: 5m, count: 5, calm: 15m }</code></pre>
+<figcaption><span class="fig-no">図 10</span>パターン A: 種別ペア型ルール</figcaption>
+</figure>
+<p><strong>パターン B: 状態 varbind 型</strong> — 単一の Trap 種別で、varbind の値が raise/clear を決める。
+汎用アラーム通知を 1 本の Trap で表現する装置に多い。</p>
+<figure>
+<pre><code>rule: generic-alarm
+match: { trap: VENDOR-MIB::alarmNotify }
+key: "{source}:{alarmObjectId}"
+transition:
+  raise_when: { where: { alarmStatus: [critical, major, minor] },
+                severity_from: alarmStatus }
+  clear_when: { where: { alarmStatus: cleared } }</code></pre>
+<figcaption><span class="fig-no">図 11</span>パターン B: 状態 varbind 型ルール</figcaption>
+</figure>
+<p><strong>パターン C: アラーム ID 照合型</strong> — X.733 系の設計で、raise 通知と clear 通知が
+共通のアラーム識別子 varbind で対応づく。キーにその識別子を使うことでパターン A/B に還元される
+(<code>key: "{source}:{alarmSeq}"</code>)。</p>
+<p>いずれのパターンでも、設計上の要点は共通している。</p>
+<ol>
+<li><strong>raise/clear の対応を 1 つのルールに書く</strong>(トリガー 2 分裂・障害復旧式の分離をしない)</li>
+<li><strong>状態キーを宣言する</strong>。キーの材料は種別(役割 1)ではなく個体(役割 2)から取る</li>
+<li><strong>遷移条件は型付き値(役割 3)で書く</strong>。文字列 regex はどこにも登場しない</li>
+<li>flapping の扱いはルール内で宣言的に定義する(時間窓と回数を指定し、閾値を超えたら Alarm を flapping 状態に遷移させる)</li>
+</ol>
+<p>
+raise/clear モデルには <strong>clear の消失に対する縮退方針</strong>が必須である。Trap は UDP で
+失われ得るため(§12)、clear を取りこぼした Alarm は放置すれば永久に残り、Active Alarm List の
+信頼性を損なう。sekisho は次の 3 つを仕様として持つ。
+</p>
+<ol>
+<li><strong>失効ポリシー</strong>: ルール単位で <code>expire_after</code>(例: 7d)を宣言でき、
+期限を超えた Alarm は理由 <code>expired</code> 付きで自動 clear される</li>
+<li><strong>手動 clear API</strong>: 運用者による強制 clear を監査付きで提供する。装置由来の clear とは
+理由コード(<code>trap / manual / expired</code>)で区別され、alarm lifecycle event に記録される</li>
+<li><strong>対応する raise の無い clear</strong>: イベントとして記録した上で、状態遷移は起こさない</li>
+</ol>
+<p>
+flapping は通知の抑制ではなく、<strong>Alarm の明示的な状態</strong>として扱う(§2.2 の境界ルールとの
+整合)。時間窓内の遷移回数が閾値を超えると Alarm は flapping 状態に入るが、個々の遷移はイベントとして
+記録され続ける。静穏期間(<code>calm</code>、例: 15 分無遷移)で flapping は解除され、開始と終了は
+<code>alarm.flapping</code> / <code>alarm.updated</code> で上位層に通知される。通知のダンピング自体は
+Alert 層の責務である。Alarm のタイムラインは受信時刻(<code>received_at</code>)を正とし、
+近接した順序逆転(linkUp が linkDown より先に届く等)の扱いは猶予窓として LLD で定義する。
+</p>
+
+<h2 id="datastore"><span class="no">6</span>データストア</h2>
+<p>データストアは役割ごとに分離する。<strong>イベント・統計・バックテストは ClickHouse</strong> に、<strong>状態・設定・メタデータは PostgreSQL</strong> に置く。</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 5</span>2 ストアの役割分担</caption>
+<thead><tr><th>項目</th><th>ClickHouse</th><th>PostgreSQL</th></tr></thead>
+<tbody>
+<tr><td>データ</td><td>ingress event 全量、alarm lifecycle event、集計</td><td>Active Alarm、ack、ルール適用履歴、提案ドラフト</td></tr>
+<tr><td>特性</td><td>追記のみ・カラムナ・高圧縮・全走査が速い</td><td>OLTP・小さい・更新あり</td></tr>
+<tr><td>開発</td><td>docker compose(本番と同一エンジン)</td><td>docker compose</td></tr>
+<tr><td>本番(リファレンス構成の一例)</td><td>ClickHouse Cloud(AWS Marketplace / PrivateLink)</td><td>RDS 最小構成</td></tr>
+</tbody>
+</table></div>
+<p>
+ClickHouse を採用した決め手は性能ではない。<strong>バックテストの基盤となる全量イベントを、
+開発と本番で同一エンジン・同一形式のまま保持・走査できること</strong>、そして Firehose → Parquet → Athena のような
+ETL パイプラインが不要になることが理由である。ホット/コールドの階層化は TTL + S3 ディスクで、
+ルートカウンタの集計は Materialized View による挿入時の自動更新で実現する。
+</p>
+<p>イベントテーブルの骨子(varbind は <a href="#trap-anatomy">§5.1</a> の分解形で持つ):</p>
+<figure>
+<pre><code>CREATE TABLE ingress_events (
+  event_id     UUID,                      -- 受信時に採番。冪等挿入と lineage 参照のキー
+  received_at  DateTime64(3),
+  source_addr  String,                    -- パケットの送信元(forward 経由では転送元になる)
+  device_id    LowCardinality(String),   -- 解決済みの装置 ID(§5.1)
+  sys_uptime   UInt64,                    -- 第 1 varbind。装置再起動の検知に利用
+  trap_oid     String,                    -- snmpTrapOID の値(種別)
+  trap_name    LowCardinality(String),   -- MIB 解決できた場合
+  mib_set      LowCardinality(String),   -- 解決に用いた MIB スナップショットの版
+  varbinds     Nested(
+    base_oid   String,                    -- 添字を除いたオブジェクト OID
+    name       String,                    -- MIB 解決名('' = 未解決)
+    instance   String,                    -- インスタンス添字
+    value_type LowCardinality(String),
+    raw_value  String,                    -- 原値。再解決・バックテストの基準
+    value      String                     -- 表示用の正規化値(列挙はラベル)
+  ),
+  raw_pdu      String,                    -- 生 PDU(来歴の終端)
+  route_id     LowCardinality(String),   -- '' = unrouted
+  action       LowCardinality(String),   -- stateful / drop / bucket
+  alarm_id     String                     -- 遷移を起こした場合のみ
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(received_at)
+ORDER BY (device_id, trap_oid, received_at)
+TTL toDateTime(received_at) + INTERVAL 90 DAY TO DISK 's3'</code></pre>
+<figcaption><span class="fig-no">図 12</span>ingress_events テーブル骨子(ClickHouse)</figcaption>
+</figure>
+<p>
+2 ストア間の整合性は次の方針で守る。<strong>Alarm 状態の正は PostgreSQL</strong> であり、Alarm 遷移と
+alarm.* の配送予約は同一トランザクションで書き込む(transactional outbox)。ClickHouse への Event
+挿入は <code>event_id</code> による冪等挿入とし、クラッシュ後は outbox の再送と Event の補完で回復する。
+なおバックテストは SQL だけで完結する処理ではなく、<strong>ClickHouse に保持した順序付きイベント列を
+状態エンジンでリプレイする</strong>処理であり、ClickHouse はそのリプレイ基盤である。保持期間の終端と
+バックテストの対象範囲(ホット層のみか全階層か)は LLD で確定する(§14)。
+なお状態ストアに PostgreSQL を選ぶ理由もこの一点にある。transactional outbox と Alarm 遷移は
+ACID トランザクションを要求し、ドキュメント指向ストアでは §7 の配送保証を同等の単純さで実現できない。
+</p>
+
+<h2 id="alarm-stream"><span class="no">7</span>alarm.* ストリーム(上位層との契約)</h2>
+<p>
+alarm.* ストリームは、将来の Alert 層や Incident 管理システムとの唯一の接続点である。
+この契約が安定していることが、レイヤ分離を成立させる前提となる。
+</p>
+<ul>
+<li>イベント種別: <code>alarm.raised</code> / <code>alarm.updated</code> / <code>alarm.flapping</code> /
+<code>alarm.cleared</code> / <code>alarm.acked</code>。<code>alarm.updated</code> は severity または
+注記属性が変化したときにのみ発火し、同一状態の再観測(重複 raise)では発火しない(回数は Alarm 側の
+カウンタに反映される)。<code>alarm.cleared</code> は理由コード(<code>trap / manual / expired</code>)を持つ</li>
+<li>ペイロード: 安定した <code>alarm_id</code>、<strong>alarm_id ごとに単調増加するシーケンス番号</strong>、
+状態キー、severity、rule/route の識別子、遷移を起こした ingress event の <code>event_id</code>(lineage)</li>
+<li>配送: 当面 Webhook。at-least-once であり、順序は alarm_id 単位の直列配送で保証する。
+<strong>購読者は (alarm_id, seq) による重複排除を実装すること</strong>を契約とする。配送失敗は
+指数バックオフで再試行し、長時間滞留した場合の復旧は <code>list_alarms</code> による全量リコンサイルを推奨する</li>
+<li>配送先(sink)はプラグイン可能な抽象とする。標準実装は <strong>Webhook</strong> と
+<strong>カスタムスクリプト実行</strong>(alarm.* の JSON を標準入力で渡して任意のスクリプトを起動する)の
+2 つで、特定の連携先を仮定しない疎結合を優先する。スクリプト実行は outbox の先の配送ワーカーに
+隔離されており、受信ホットパス(§12)には影響しない</li>
+<li>スキーマはバージョン付き JSON とし、後方互換を守る(互換性ポリシーは §14)</li>
+</ul>
+
+<h2 id="mcp"><span class="no">8</span>MCP サーバとルールライフサイクル</h2>
+<p>
+sekisho は <strong>MCP をネイティブに組み込んでいる</strong>。AI エージェント(Claude 等)は
+MCP ツールを通じて、ルールのメンテナンスに参加できる。MCP ツール自体は §4 の REST API の
+薄いラッパーであり、人間が CLI や UI から行える操作と同じ面に対して動く。
+</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 6</span>MCP ツール一覧</caption>
+<thead><tr><th>ツール</th><th>役割</th></tr></thead>
+<tbody>
+<tr><td><code>list_unmatched_traps</code></td><td>unrouted バケットを頻度順で返す。メンテ優先度が自明になる</td></tr>
+<tr><td><code>sample_trap_events</code></td><td>指定種別/装置の実イベントサンプルと分解済み varbind を返す</td></tr>
+<tr><td><code>get_mib_info</code></td><td>NOTIFICATION-TYPE の OBJECTS 句・列挙定義を返す(提案の根拠)</td></tr>
+<tr><td><code>propose_rule</code></td><td>LLM が MIB 定義 + 実サンプルからルート/ルール案をドラフト(ドラフトは PG に保存)</td></tr>
+<tr><td><code>backtest_rule</code></td><td>提案ルールを<strong>過去の生イベント全件に試走</strong>。「過去 30 日でマッチ 1,243 件、生成される Alarm 37 件、平均継続 12 分」を返す</td></tr>
+<tr><td><code>apply_rule</code></td><td>人間の承認後、git にコミットしエンジンをリロード</td></tr>
+<tr><td><code>list_routes</code> / <code>show_route</code></td><td>ルートテーブルとヒットカウンタ</td></tr>
+<tr><td><code>list_alarms</code> / <code>get_alarm</code></td><td>Active Alarm List と個別 Alarm(lineage 付き)</td></tr>
+</tbody>
+</table></div>
+<p>
+バックテストの再現性は、<strong>ルール評価が(順序付きイベント列、ルール、MIB スナップショット)の
+純関数である</strong>ことで保証する。時間窓は壁時計ではなく <code>received_at</code> で評価し、
+シンボリックな条件(<code>ifOperStatus: down</code>)は Event に刻印された MIB 版(<code>mib_set</code>)を
+用いて原値(<code>raw_value</code>)に対して再解決する。
+</p>
+<figure>
+<svg viewBox="0 0 940 150" role="img" aria-label="ルールライフサイクル">
+  <defs>
+    <marker id="arf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <rect x="10" y="34" width="138" height="56" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="79" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">unmatched 観測</text>
+  <text x="79" y="76" text-anchor="middle" font-size="10" fill="#6b7280">頻度順に可視化</text>
+  <line x1="148" y1="62" x2="164" y2="62" stroke="#6b7280" marker-end="url(#arf)"/>
+  <rect x="166" y="34" width="138" height="56" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="235" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">LLM ドラフト</text>
+  <text x="235" y="76" text-anchor="middle" font-size="10" fill="#6b7280">MIB + 実サンプル</text>
+  <line x1="304" y1="62" x2="320" y2="62" stroke="#6b7280" marker-end="url(#arf)"/>
+  <rect x="322" y="34" width="138" height="56" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="391" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">バックテスト</text>
+  <text x="391" y="76" text-anchor="middle" font-size="10" fill="#6b7280">過去全 Event に試走</text>
+  <line x1="460" y1="62" x2="476" y2="62" stroke="#6b7280" marker-end="url(#arf)"/>
+  <rect x="478" y="34" width="138" height="56" rx="10" fill="#fffbeb" stroke="#d97706"/>
+  <text x="547" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b45309">人間の承認</text>
+  <text x="547" y="76" text-anchor="middle" font-size="10" fill="#6b7280">影響を数字で確認</text>
+  <line x1="616" y1="62" x2="632" y2="62" stroke="#6b7280" marker-end="url(#arf)"/>
+  <rect x="634" y="34" width="138" height="56" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="703" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">git commit</text>
+  <text x="703" y="76" text-anchor="middle" font-size="10" fill="#6b7280">レビュー・差分・履歴</text>
+  <line x1="772" y1="62" x2="788" y2="62" stroke="#6b7280" marker-end="url(#arf)"/>
+  <rect x="790" y="34" width="138" height="56" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="859" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">リロード</text>
+  <text x="859" y="76" text-anchor="middle" font-size="10" fill="#6b7280">エンジンに反映</text>
+  <polyline points="391,90 391,120 235,120 235,94" fill="none" stroke="#9aa1a9" stroke-dasharray="5 4" marker-end="url(#arf)"/>
+  <text x="313" y="136" text-anchor="middle" font-size="10.5" fill="#6b7280">結果が悪ければ再ドラフト</text>
+</svg>
+<figcaption><span class="fig-no">図 13</span>ルールライフサイクル — マージ前に影響が数字で分かる</figcaption>
+</figure>
+<div class="principle">
+<span class="label">ライフサイクル</span>
+ルールは「unmatched の観測 → LLM によるドラフト → バックテストでの影響確認 → 人間の承認 →
+git コミット → エンジンのリロード」という流れで育てる。マージ前に影響が数字で分かることが、
+従来の監視ツールとの決定的な違いである。
+</div>
+
+<h3><span class="no">8.1</span>ルールリポジトリと CI/CD(GitHub 連携)</h3>
+<p>
+ルート・ルールの YAML は、sekisho 本体のコードとは<strong>別のリポジトリ</strong>で管理する。
+ソフトウェアのリリースサイクルと監視ルールの変更サイクルは独立しており、所有者も異なるからである
+(ルールリポジトリは運用チームが所有する)。
+</p>
+<ul>
+<li><strong>テンプレート生成</strong>: <code>sekisho rules init</code> がルールリポジトリの雛形を
+生成する。ディレクトリ規約・サンプルルール・CI ワークフロー(GitHub Actions)一式を含み、
+リポジトリを作った瞬間から PR 駆動の運用が回る</li>
+<li><strong>CI</strong>: PR に対して <code>sekisho rules lint</code>(構文・MIB 解決・重複ルートの検証)と
+バックテスト(REST API 経由)が走り、「過去 30 日でマッチ N 件、生成される Alarm M 件」という
+影響数値が PR コメントとして自動投稿される。レビュアは差分と影響を同じ画面で見る</li>
+<li><strong>CD</strong>: エンジンは保護ブランチだけを監視し(webhook またはポーリング)、マージされた
+コミットを検証のうえロードする。ロード結果(成功 / 警告 / 差し戻し)は自己監視メトリクス(§12)に
+記録される</li>
+<li><code>apply_rule</code> は、このリポジトリへの PR 作成として実装される(§11 のゲートと一体)</li>
+</ul>
+
+<h2 id="llm"><span class="no">9</span>LLM プロバイダ</h2>
+<ul>
+<li>プロバイダ抽象を 1 枚かませ、初期実装は <strong>AWS Bedrock</strong>(Converse API)と
+<strong>ローカル LLM</strong>(Ollama 等の OpenAI 互換エンドポイント)の 2 つ</li>
+<li>用途は提案・解説・要約に限定する。<strong>Alarm 判定のホットパスでは LLM を呼ばない</strong></li>
+<li>外部の AI エージェントが MCP 経由で操作する経路と、サーバ内蔵の提案機能が
+Bedrock/ローカルを呼ぶ経路の両方が共存する</li>
+</ul>
+
+<h2 id="deploy"><span class="no">10</span>デプロイ</h2>
+<ul>
+<li><strong>実装</strong>: Go による単一バイナリ。SNMP/MIB ライブラリのエコシステムと配布・起動の
+容易さを優先する。React 製 Web UI のビルド済みアセットはバイナリに埋め込む</li>
+<li><strong>開発</strong>: <code>docker compose up</code>(sekisho + ClickHouse + PostgreSQL)。本番と同一エンジン</li>
+<li><strong>本番</strong>: コンテナが動作する環境であればどこでも構わない。リファレンス構成の一例として AWS では
+ClickHouse Cloud(Marketplace 経由・PrivateLink)+ RDS(PostgreSQL)+ ECS。
+マネージド ClickHouse が採用できない環境ではセルフホストが退避先</li>
+</ul>
+
+<h3><span class="no">10.1</span>受信経路の選択肢と移行計画</h3>
+<p>
+最終形は、sekisho が 162 番ポートで Trap を直接受信する構成である。ただし直接受信への切り替えは
+装置側の Trap 宛先変更を伴うため、移行期には既存環境にほぼ手を入れずに Trap の複製を得る手段が
+必要になる。選択肢は 3 つある。
+</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 7</span>移行期に Trap の複製を得る 3 つの方式</caption>
+<thead><tr><th>方式</th><th>仕組み</th><th>送信元 IP</th><th>既存環境への影響</th></tr></thead>
+<tbody>
+<tr><td><strong>snmptrapd forward</strong></td><td>snmptrapd.conf に <code>forward default udp:host:1620</code> を追加し、受信した通知を再生成して転送する</td><td>失われる(snmptrapd ホストになる)</td><td>設定 1 行のみ</td></tr>
+<tr><td><strong>OS レベルのパケット複製</strong></td><td>カーネルのファイアウォール機能(nftables の <code>dup</code> / iptables の <code>TEE</code>)で、UDP 162 の受信パケットを複製して sekisho ホストへ送る</td><td>保たれる</td><td>mangle ルールを 1 本追加。snmptrapd には触れない</td></tr>
+<tr><td><strong>装置側の宛先追加</strong></td><td>装置の Trap 送信先に sekisho を追加する(多くの装置は複数宛先に対応する)</td><td>保たれる</td><td>全装置の設定変更が必要</td></tr>
+</tbody>
+</table></div>
+<p>
+方式の選択は状態エンジンと連動する。<strong>forward 方式は送信元 IP を失うため、§5.1 の device_id
+解決が varbind 経由(<code>snmpTrapAddress.0</code> や装置識別子)で成立する場合にのみ、状態エンジンの
+前提を満たす</strong>。成立しない環境では、forward での並走は M1(構造化蓄積と unrouted の観測)までの
+検証と位置づけ、状態エンジン(M2)はパケット複製以降で有効化する。
+</p>
+<figure>
+<pre># nftables: 受信した UDP 162 パケットを sekisho ホストへ複製する(実質 L2 隣接が前提)
+nft add table ip mangle
+nft add chain ip mangle prerouting '{ type filter hook prerouting priority mangle; }'
+nft add rule ip mangle prerouting udp dport 162 dup to 192.0.2.10 device eth0
+
+# 旧環境(iptables)の場合は TEE ターゲットで同じことができる
+iptables -t mangle -A PREROUTING -p udp --dport 162 -j TEE --gateway 192.0.2.10
+
+# sekisho ホスト側: 複製パケットの宛先 IP は旧監視サーバ(198.51.100.5)宛のままなので、
+# ローカルのソケットに配送させるために DNAT で自分宛(192.0.2.10)へ書き換える
+nft add rule ip nat prerouting ip daddr 198.51.100.5 udp dport 162 dnat to 192.0.2.10</pre>
+<figcaption><span class="fig-no">図 14</span>OS レベルのパケット複製の設定例(192.0.2.10 = sekisho、198.51.100.5 = 旧監視サーバ)</figcaption>
+</figure>
+<p>
+複製されたパケットは送信元 IP・ポートを保ったまま届くため、sekisho は装置を送信元 IP で同定できる。
+注意点は 2 つある。第一に、複製はカーネルによる一方向のクローンであり応答経路を持たないが、
+Trap はもともと応答を要求しないため問題にならない。第二に、宛先ポートは 162 のまま複製されるため、
+sekisho は snmptrapd とは別のホスト(または独自の IP を持つコンテナ)で 162 番を listen する
+必要がある。加えて <code>dup</code>/TEE は宛先 IP を書き換えない複製であるため、sekisho ホスト側での
+DNAT(図 14 の 3 ブロック目)が必須であり、実質 L2 隣接を前提とする。経路上のファイアウォールや
+アンチスプーフィング機構で複製パケットが落ちないことも導入前の検証項目である。
+</p>
+<p>
+推奨する移行順序は次のとおりである。<strong>Phase 1a</strong>: forward で最小の手数で並走を開始する。
+送信元 IP が必要になった時点で <strong>Phase 1b</strong>: パケット複製へ切り替える。最終的に
+<strong>Phase 2</strong>: 装置側の宛先変更を伴う直接受信へ移行し、snmptrapd を退役させる。
+</p>
+<p>
+移行期の運用として、次の 3 点を §12 の自己監視とあわせて計画する。<strong>並走検証</strong> —
+既存ツールの障害一覧と sekisho の Active Alarm List を一定期間突き合わせ、一致率を移行判断の基準に
+する。<strong>重複受信の方針</strong> — 方式の併用期間には同一 Trap を二重受信し得るが、同一キーへの
+再 raise は状態遷移を起こさない(通知も増えない)。<strong>切り戻し</strong> — 各 Phase は独立に
+無効化でき、既存側は常に無変更で残るため、戻し先が失われることはない。
+</p>
+
+<h2 id="security"><span class="no">11</span>セキュリティモデル</h2>
+<p>
+監視システムは、攻撃者にとって「目を潰す」対象である。信頼境界と権限は設計段階で確定させる。
+</p>
+<ul>
+<li><strong>ルール変更の唯一のゲートは git である</strong>。<code>apply_rule</code> を含むどの経路も
+エンジンのルールを直接書き換えることはできず、MCP からの適用は Pull Request の作成までとする。
+エンジンは保護ブランチからのみルールをロードするため、人間によるマージが承認の強制点となる
+(「人間の承認」を運用ルールではなく仕組みとして担保する)</li>
+<li><strong>MCP ツールは read-only と write に分離する</strong>。観測系(<code>list_* / sample_* /
+get_* / backtest_rule</code>)と変更系(<code>propose_rule / apply_rule</code>)で権限を分け、
+認証・認可は MCP 接続単位で行う</li>
+<li><strong>LLM へのデータ送信は方針として制御する</strong>。<code>propose_rule</code> が外部 LLM
+(Bedrock)へ送るのは MIB 定義と varbind サンプルであり、装置 IP 等の識別子はマスキングできる。
+外部送信を許容しない環境向けに、ローカル LLM 限定モードを提供する</li>
+<li><strong>Webhook は署名する</strong>(HMAC)。購読者は署名検証によって偽の alarm.* を排除できる</li>
+<li><strong>162 番直接受信(Phase 2)では受信 ACL とコミュニティ検証を必須とする</strong>。UDP は
+送信元を偽装できるため、送信元アドレスの許可リストを一次防御とする。SNMPv3 の USM(認証・暗号化)に
+対応し、ACL と併用してスプーフィング耐性を高める。資格情報(engineID・ユーザ・鍵)は設定として
+管理し、平文では保存しない</li>
+</ul>
+
+<h2 id="reliability"><span class="no">12</span>信頼性設計</h2>
+<div class="caution">
+<span class="label">Caution</span>
+Trap は UDP で再送がないため、届かないことがある。そのため Trap だけに頼る監視は
+「無音」と「正常」を区別できない。対策として、ICMP ping 程度の超軽量な生存確認を将来の
+イベントソースとして併設する(装置負荷は実質ゼロで済む)。これは Event 層の別ソース種別として
+<a href="#relations">§2.1</a> の拡張点に位置づけられる。
+</div>
+<ul>
+<li>MIB は必ず欠けるものとして設計する。未解決 OID の Trap も落とさず、生のまま Event 層に通す(<a href="#trap-anatomy">§5.1</a> の縮退動作)</li>
+<li>flapping や Trap ストームの際に、<strong>受信経路では</strong> fork や外部プロセスの起動を行わない。
+これが snmptrapd の traphandle を使わない理由である。外部プロセスを起動するのは alarm.* 配送の
+スクリプト sink(§7)だけであり、outbox の先の配送ワーカーに隔離されている</li>
+<li><strong>ストーム時の縮退</strong>: 受信から格納までは有界キューで接続し、ClickHouse 停止時は
+ローカルディスクのスプール(WAL)で受信を継続する。それでも溢れた場合の drop は必ず自己カウンタに
+計上し、「黙って捨てる」ことはしない。ストーム時には MIB 解決などの派生処理を後回しにする
+縮退モードを持つ</li>
+<li><strong>自己監視</strong>: 受信レート、キュー深度、drop 数、unrouted 率、ストア書き込み遅延、
+Webhook 配送失敗、最終 Trap 受信時刻を、標準のメトリクスエンドポイント(Prometheus 形式)で公開する。
+sekisho 自身の沈黙は、外部の watchdog が heartbeat で検知する前提とする</li>
+<li><strong>目標負荷</strong>: 定常 500 traps/sec を drop なしで処理する。ストーム時はその 10 倍
+(5,000 traps/sec)の短時間バーストを有界キューとスプールで吸収する。この域は単一 Go プロセスで
+十分に達成可能であり、次項の単一インスタンス前提の根拠でもある</li>
+<li><strong>可用性の非目標</strong>: v1 は単一インスタンスを前提とし、HA は非目標として明示する。
+将来の水平分割は、状態キーが装置を含むことから device_id ハッシュが自然な分割軸になる</li>
+<li>INFORM(確認応答付き通知)には対応しない。UDP 消失への備えは、失効ポリシー(§5.3)・
+ping 生存確認(将来ソース)・本節の自己監視の組み合わせで行う</li>
+</ul>
+
+<h2 id="milestones"><span class="no">13</span>マイルストーン</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 8</span>縦切りマイルストーン</caption>
+<thead><tr><th>M</th><th>内容</th><th>縦切りの確認点</th></tr></thead>
+<tbody>
+<tr><td>M1</td><td>forward 受信 → MIB 解決 → ClickHouse 格納、unrouted 一覧(CLI)、公開テストコーパス(pcap / golden ファイル)の整備</td><td>実 Trap が構造化されて貯まる。実装置なしで開発・回帰テストができる</td></tr>
+<tr><td>M2</td><td>ルーティングテーブル + 状態エンジン + PostgreSQL + alarm.* Webhook</td><td>linkDown/Up が 1 ルールで raise/clear する</td></tr>
+<tr><td>M3</td><td>MCP サーバ(unmatched / sample / backtest / apply)</td><td>AI エージェントからルールを書いてバックテストできる</td></tr>
+<tr><td>M4</td><td>LLM 提案(Bedrock / ローカル)</td><td>unmatched から提案ドラフトが出る</td></tr>
+<tr><td>M5</td><td>Web UI(ルートテーブル + カウンタ、Active Alarm、イベント検索)</td><td><code>sekisho route show</code> の描画体験(図 9)を Web でも提供</td></tr>
+<tr><td>以降</td><td>自前 162 受信、ping 生存確認ソース、Alert 層(別途設計)</td><td></td></tr>
+</tbody>
+</table></div>
+<p>
+M2(状態エンジン)は装置同定(§5.1 の device_id 解決)を前提とする。受信方式が forward のみ
+(Phase 1a)の環境では、<code>snmpTrapAddress.0</code> や varbind 由来の識別子で装置を解決できることを
+確認してから M2 を有効化する(§10.1)。
+</p>
+
+<h2 id="open-questions"><span class="no">14</span>未決事項</h2>
+<ul>
+<li>公開契約の互換性ポリシー — 安定を保証する面は alarm.* スキーマ / ルール DSL / MCP ツールの 3 つ、
+保証しない面は DB スキーマと内部 API。v1.0 までは全契約を unstable と明示する</li>
+<li>MIB の供給方法 — private MIB は再配布不可のためユーザ持ち込みを前提とし、配置規約とロード仕様を
+定義する(リポジトリに同梱するのは標準 MIB のみ)</li>
+<li>正式名称(コードネーム sekisho のまま OSS 公開するかを含め未定)</li>
+<li>ルーティング DSL の正式スキーマ(§5 は骨子。LLD で確定)</li>
+<li>alarm.* ストリームのスキーマ詳細(バージョニング方針含む)</li>
+<li>順序逆転の猶予窓、保持期間の終端、バックテストの対象範囲(ホット層のみか全階層か)</li>
+</ul>
+
+</main>
+</div>
+
+<!-- ======================================================================= -->
+<!-- English edition                                                          -->
+<!-- ======================================================================= -->
+<div class="layout" id="layout-en">
+<nav class="toc" aria-label="Table of contents">
+  <div class="toc-title">Contents</div>
+  <a href="#background-en"><span class="no">1</span>Background and Problem</a>
+  <a class="toc-h2" href="#problem-en"><span class="no">1.1</span>Problem: statelessness &amp; lost structure</a>
+  <a class="toc-h3" href="#pdu-anatomy-en"><span class="no">1.1.1</span>SNMP traps and varbinds</a>
+  <a class="toc-h3" href="#flattening-en"><span class="no">1.1.2</span>The flattening side effect</a>
+  <a href="#ontology-en"><span class="no">2</span>Monitoring Concept Model</a>
+  <a class="toc-h2" href="#relations-en"><span class="no">2.1</span>Relations between concepts</a>
+  <a class="toc-h2" href="#boundary-rules-en"><span class="no">2.2</span>Three boundary rules</a>
+  <a class="toc-h2" href="#legacy-terms-en"><span class="no">2.3</span>Terminology mapping to legacy tools</a>
+  <a href="#scope-en"><span class="no">3</span>Scope</a>
+  <a href="#architecture-en"><span class="no">4</span>Architecture</a>
+  <a href="#matching-en"><span class="no">5</span>Matching Model</a>
+  <a class="toc-h2" href="#trap-anatomy-en"><span class="no">5.1</span>Anatomy of a trap</a>
+  <a class="toc-h2" href="#routing-table-en"><span class="no">5.2</span>Routing table</a>
+  <a class="toc-h2" href="#stateful-rules-en"><span class="no">5.3</span>Stateful rules: 3 patterns</a>
+  <a href="#datastore-en"><span class="no">6</span>Datastores</a>
+  <a href="#alarm-stream-en"><span class="no">7</span>The alarm.* Stream</a>
+  <a href="#mcp-en"><span class="no">8</span>MCP Server</a>
+  <a href="#llm-en"><span class="no">9</span>LLM Providers</a>
+  <a href="#deploy-en"><span class="no">10</span>Deployment</a>
+  <a href="#security-en"><span class="no">11</span>Security Model</a>
+  <a href="#reliability-en"><span class="no">12</span>Reliability Design</a>
+  <a href="#milestones-en"><span class="no">13</span>Milestones</a>
+  <a href="#open-questions-en"><span class="no">14</span>Open Questions</a>
+</nav>
+<main>
+
+<header class="cover">
+  <div class="lang-switch"><a data-setlang="ja">日本語</a> · <span class="current">English</span></div>
+  <div class="kicker">Design Doc</div>
+  <h1>sekisho — High Level Design</h1>
+  <p class="subtitle">A routing-table-driven network monitoring engine built around receiving, interpreting, and stateful management of SNMP traps.</p>
+  <dl class="meta-grid">
+    <div><dt>Status</dt><dd><span class="badge">Draft</span></dd></div>
+    <div><dt>Codename</dt><dd>sekisho (関所)</dd></div>
+    <div><dt>Last Updated</dt><dd>2026-07-25</dd></div>
+    <div><dt>Scope</dt><dd>Core engine (through alarm management)</dd></div>
+    <div><dt>License</dt><dd>Apache-2.0 + DCO</dd></div>
+  </dl>
+  <p class="subtitle" style="margin-top:1rem; font-size:0.85rem;">
+    Official name TBD. A <em>sekisho</em> was a checkpoint station on historical Japanese highways:
+    traffic was inspected, passed, turned away, or redirected — exactly what this engine does to traps.
+  </p>
+</header>
+
+<h2 id="background-en"><span class="no">1</span>Background and Problem</h2>
+<p>
+Network device monitoring has been moving toward streaming (model-driven) telemetry, exemplified by gNMI.
+Many network operators, however, still run legacy devices that do not support these interfaces, and
+SNMP trap-based monitoring remains widespread. In environments where polling frequency cannot be raised
+due to device load constraints, traps are effectively the only monitoring signal. Yet the widely deployed OSS toolchains still treat traps as text lines and have gone without meaningful
+updates for years; a trap monitoring platform with a modern development experience — declarative state
+management, backtesting against historical events, rules under git — is nowhere to be found.
+</p>
+
+<h3 id="problem-en"><span class="no">1.1</span>Problem: stateless traps, and pipelines that discard structure</h3>
+<p>The problem with trap-based monitoring must be understood as two distinct layers.</p>
+<ol>
+<li><strong>The essential problem — traps carry no state.</strong> Monitoring wants to answer
+"what is broken right now", which is a <em>state</em>; a trap is only a momentary <em>event</em>
+("a linkDown arrived"). Reconstructing state from events — pairing raises with clears — is something
+every trap consumer must solve. It is a property of the protocol, and no tool makes it disappear</li>
+<li><strong>The accidental problem — existing pipelines throw the structure away, which makes
+problem 1 hard to solve.</strong> State identity ("which port on which device" — the state key) lives
+only in the varbind instance suffixes and values, yet existing pipelines melt exactly that into text
+at the entrance (§1.1.2). Once the structure is gone, both key extraction and raise/clear pairing
+degenerate into regex work</li>
+</ol>
+<p>
+In short, <strong>problem 1 is the real target, and problem 2 is the obstacle in front of it</strong>.
+sekisho removes problem 2 by keeping the PDU structured (§1.1.1, §5.1), and solves problem 1 head-on
+with the state engine (§5.3). §1.1.1 first shows, with a concrete example, what a trap actually
+carries.
+</p>
+
+<h4 id="pdu-anatomy-en"><span class="no">1.1.1</span>SNMP traps and varbinds — what actually arrives</h4>
+<p>
+An SNMPv2 trap PDU (Protocol Data Unit) is a list of varbinds (OID + <strong>type</strong> + value).
+As a concrete example, here is the linkDown trap that arrives when interface 1000 (ifIndex = 1000)
+on device <code>10.0.0.1</code> goes down.
+</p>
+<figure>
+<pre>varbind[0]  1.3.6.1.2.1.1.3.0          sysUpTime.0        = TimeTicks: 512345600
+varbind[1]  1.3.6.1.6.3.1.1.4.1.0      snmpTrapOID.0      = OID: 1.3.6.1.6.3.1.1.5.3 (IF-MIB::linkDown)
+varbind[2]  1.3.6.1.2.1.2.2.1.1.1000   ifIndex.1000       = INTEGER: 1000
+varbind[3]  1.3.6.1.2.1.2.2.1.7.1000   ifAdminStatus.1000 = INTEGER: 1 (up)
+varbind[4]  1.3.6.1.2.1.2.2.1.8.1000   ifOperStatus.1000  = INTEGER: 2 (down)</pre>
+<figcaption><span class="fig-no">Figure 1</span>Contents of a linkDown trap PDU (device 10.0.0.1, ifIndex = 1000)</figcaption>
+</figure>
+<p>Three things are worth reading out of this.</p>
+<ol>
+<li><strong>The first two varbinds are fixed by the SNMPv2 standard</strong>: <code>sysUpTime.0</code>
+(device uptime) and <code>snmpTrapOID.0</code> (what this trap <em>is</em>). A receiver can determine
+"this is a linkDown" mechanically by looking at varbind[1] alone</li>
+<li><strong>The remaining varbinds are declared by the MIB</strong>. The IF-MIB NOTIFICATION-TYPE
+definition (Figure 3) declares that linkDown carries ifIndex, ifAdminStatus, and ifOperStatus, and the
+MIB also defines each value's type and enum. In other words, <strong>traps have a schema</strong></li>
+<li><strong>A varbind's OID decomposes into "which object" and "which instance"</strong>:
+<code>1.3.6.1.2.1.2.2.1.8.1000</code> is the object <code>ifOperStatus</code> (<code>…2.2.1.8</code>)
+with the instance suffix <code>.1000</code> (interface number 1000) appended</li>
+</ol>
+<figure>
+<svg viewBox="0 0 640 150" role="img" aria-label="OID decomposition" style="max-width:560px">
+  <rect x="30" y="30" width="370" height="46" rx="8" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="215" y="59" text-anchor="middle" font-size="20" font-family="ui-monospace, Menlo, monospace" fill="#1a1f24">1.3.6.1.2.1.2.2.1.8</text>
+  <rect x="404" y="30" width="120" height="46" rx="8" fill="#fffbeb" stroke="#d97706"/>
+  <text x="464" y="59" text-anchor="middle" font-size="20" font-family="ui-monospace, Menlo, monospace" fill="#1a1f24">.1000</text>
+  <line x1="215" y1="80" x2="215" y2="102" stroke="#1d4ed8"/>
+  <line x1="464" y1="80" x2="464" y2="102" stroke="#d97706"/>
+  <text x="215" y="122" text-anchor="middle" font-size="13" fill="#1d4ed8">object = ifOperStatus (which value)</text>
+  <text x="464" y="122" text-anchor="middle" font-size="13" fill="#b45309">instance suffix (which entity)</text>
+</svg>
+<figcaption><span class="fig-no">Figure 2</span>Decomposing a varbind OID — object and instance share one OID</figcaption>
+</figure>
+<figure>
+<pre>linkDown NOTIFICATION-TYPE
+    OBJECTS { ifIndex, ifAdminStatus, ifOperStatus }    -- declares the varbinds this trap carries
+    STATUS  current
+    ::= { snmpTraps 3 }
+
+ifOperStatus OBJECT-TYPE
+    SYNTAX  INTEGER { up(1), down(2), testing(3), … }   -- values are typed enums</pre>
+<figcaption><span class="fig-no">Figure 3</span>IF-MIB definitions (excerpt) — the trap's schema lives in the MIB</figcaption>
+</figure>
+<p>In summary, a single trap structurally carries three kinds of information.</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 1</span>The three kinds of information in a trap PDU</caption>
+<thead><tr><th>Information</th><th>Where it lives</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td><strong>Kind</strong> (what happened)</td><td>Value of the second varbind, <code>snmpTrapOID.0</code></td><td><code>1.3.6.1.6.3.1.1.5.3</code> = IF-MIB::linkDown</td></tr>
+<tr><td><strong>Instance</strong> (where it happened)</td><td>Instance suffix at the end of each varbind's OID / value of an index varbind</td><td>the <code>.1000</code> in <code>ifOperStatus.1000</code></td></tr>
+<tr><td><strong>Attributes</strong> (what state)</td><td>Typed varbind values</td><td><code>ifOperStatus = INTEGER 2</code> (down(2) in the MIB enum)</td></tr>
+</tbody>
+</table></div>
+<p>
+A trap is, by its nature, <strong>a structured event with a schema</strong>. From the example in
+Figure 1 alone, "kind = linkDown, instance = ifIndex 1000, attribute = ifOperStatus down(2)" can be
+extracted mechanically, without a single regular expression.
+</p>
+
+<h4 id="flattening-en"><span class="no">1.1.2</span>Root problem: existing pipelines flatten the PDU into text</h4>
+<p>
+The typical snmptrapd → legacy monitoring-server pipeline <strong>flattens this structured data
+into text right at the entrance</strong> (snmptrapd's formatted output → glue script → one line in a
+text log). Flattened, the trap of Figure 1 becomes, for example, this single line:
+</p>
+<figure>
+<pre>10:03:21 2026/07/25 .1.3.6.1.6.3.1.1.5.3 Normal "General" 10.0.0.1 - .1.3.6.1.2.1.2.2.1.1.1000 = INTEGER: 1000 .1.3.6.1.2.1.2.2.1.7.1000 = INTEGER: up(1) .1.3.6.1.2.1.2.2.1.8.1000 = INTEGER: down(2)</pre>
+<figcaption><span class="fig-no">Figure 4</span>The same trap as Figure 1 after flattening (one line in a text log)</figcaption>
+</figure>
+<p>
+The kind, instance, attributes, types, and enums that were separate in Figure 1 have melted into one
+string. A monitoring rule over this line has no choice but to become a regex trigger such as:
+</p>
+<figure>
+<pre>find(last(/router01/snmptrap["General"]), "linkDown") = 1
+and find(last(/router01/snmptrap["General"]), "\.1000 = ") = 1
+    # intended to mean "ifIndex 1000" — but ".1000 = " can also match other
+    # varbinds' suffixes or values, and the intent is unreadable from the code</pre>
+<figcaption><span class="fig-no">Figure 5</span>A regex trigger over the flattened text</figcaption>
+</figure>
+<p>
+The price of losing the types, the OID tree, the instance suffixes, and the enums is that every
+downstream step is forced into <strong>regex string matching</strong>. This is the root problem; the
+symptoms widely observed in the field all derive from it.
+</p>
+<ul>
+<li>Triggers can only be written as regular expressions over text. The expressions are hard to read and
+impossible to test. Because the kind/instance/attribute distinction has been lost, the intent of a
+condition cannot be recovered from the code</li>
+<li>Instance suffixes are buried inside strings, so per-interface or per-board fault management requires
+a detour through low-level discovery (LLD), which fits trap-driven monitoring poorly. Giving up on
+comprehensive trigger coverage becomes the rational choice</li>
+<li>Traps that match no regex fall into a fallback and effectively vanish, with no way to observe them</li>
+<li>Since only the flattened text remains, trigger additions and changes cannot be validated against
+historical data, and maintenance stalls</li>
+</ul>
+<div class="principle">
+<span class="label">Design principle</span>
+sekisho takes the opposite approach: <strong>receive, store, and match the PDU in its structured form;
+render to text only at the final display stage</strong> (<a href="#trap-anatomy-en">§5.1</a>).
+In addition: <strong>all decisions are made by deterministic rules; LLMs are limited to assisting rule
+authoring; and the interface between the two is MCP</strong>.
+</div>
+
+<h2 id="ontology-en"><span class="no">2</span>Monitoring Concept Model</h2>
+<p>The vocabulary of this design. These distinctions are never blurred.</p>
+<figure>
+<svg viewBox="0 0 680 540" role="img" aria-label="The four monitoring concepts" style="max-width:680px">
+  <defs>
+    <marker id="arm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <rect x="190" y="10" width="300" height="46" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="340" y="30" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1f24">Device</text>
+  <text x="340" y="48" text-anchor="middle" font-size="11" fill="#6b7280">"what was observed"</text>
+  <line x1="340" y1="56" x2="340" y2="92" stroke="#6b7280" marker-end="url(#arm)"/>
+  <text x="352" y="78" font-size="11.5" fill="#6b7280">sends traps (ingress events)</text>
+  <rect x="110" y="96" width="460" height="66" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="130" y="123" font-size="15" font-weight="700" fill="#1d4ed8">Event layer</text>
+  <text x="130" y="145" font-size="12.5" fill="#1a1f24">Trap = raw event; immutable, append-only, stored in full</text>
+  <rect x="452" y="107" width="102" height="22" rx="11" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="503" y="122" text-anchor="middle" font-size="11" fill="#1d4ed8">ClickHouse</text>
+  <line x1="340" y1="162" x2="340" y2="200" stroke="#6b7280" marker-end="url(#arm)"/>
+  <text x="352" y="185" font-size="11.5" fill="#6b7280">interpretation via the routing table</text>
+  <rect x="110" y="204" width="460" height="66" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="130" y="231" font-size="15" font-weight="700" fill="#1d4ed8">Alarm layer</text>
+  <text x="130" y="253" font-size="12.5" fill="#1a1f24">State objects: raise / clear / flapping</text>
+  <rect x="452" y="215" width="102" height="22" rx="11" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="503" y="230" text-anchor="middle" font-size="11" fill="#1d4ed8">PostgreSQL</text>
+  <line x1="340" y1="270" x2="340" y2="308" stroke="#6b7280" marker-end="url(#arm)"/>
+  <text x="352" y="293" font-size="11.5" fill="#6b7280">alarm.* stream (state-transition notifications)</text>
+  <rect x="110" y="312" width="460" height="66" rx="10" fill="#ffffff" stroke="#9aa1a9" stroke-dasharray="6 4"/>
+  <text x="130" y="339" font-size="15" font-weight="700" fill="#6b7280">Alert layer</text>
+  <text x="130" y="361" font-size="12.5" fill="#6b7280">Notification decisions: silence / dedup / escalation</text>
+  <rect x="404" y="323" width="150" height="22" rx="11" fill="#f8f9fb" stroke="#9aa1a9"/>
+  <text x="479" y="338" text-anchor="middle" font-size="11" fill="#6b7280">future · out of scope</text>
+  <line x1="340" y1="378" x2="340" y2="416" stroke="#6b7280" marker-end="url(#arm)"/>
+  <rect x="110" y="420" width="460" height="66" rx="10" fill="#ffffff" stroke="#9aa1a9" stroke-dasharray="6 4"/>
+  <text x="130" y="447" font-size="15" font-weight="700" fill="#6b7280">Incident</text>
+  <text x="130" y="469" font-size="12.5" fill="#6b7280">Human workflow: ownership, timeline, retrospective</text>
+  <rect x="404" y="431" width="150" height="22" rx="11" fill="#f8f9fb" stroke="#9aa1a9"/>
+  <text x="479" y="446" text-anchor="middle" font-size="11" fill="#6b7280">separate system</text>
+</svg>
+<figcaption><span class="fig-no">Figure 6</span>The four monitoring concepts and their stores</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 2</span>Definitions of the four concepts</caption>
+<thead><tr><th>Concept</th><th>Essence</th><th>Subject</th><th>Mutability</th><th>Producer</th></tr></thead>
+<tbody>
+<tr><td><strong>Event</strong></td><td>A <strong>fact</strong> of observation: "a linkDown trap arrived at 10:03:21"</td><td>Device</td><td>Immutable (append-only)</td><td>Device</td></tr>
+<tr><td><strong>Alarm</strong></td><td>An <strong>interpretation</strong> of facts: "this interface has been down since 10:03:21"</td><td>Resource (state key)</td><td>Transitions</td><td>Rule engine</td></tr>
+<tr><td><strong>Alert</strong></td><td>A <strong>reaction</strong> to the interpretation: "notify the night shift"</td><td>People, teams</td><td>Policy-driven</td><td>Alert layer</td></tr>
+<tr><td><strong>Incident</strong></td><td>The human <strong>response</strong>: ownership, timeline, retrospective</td><td>Operations org</td><td>Workflow</td><td>Separate system</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="relations-en"><span class="no">2.1</span>Relations between concepts</h3>
+<ul>
+<li><strong>Event : Alarm = N : 0..1</strong>. Multiple events drive the transitions of a single alarm
+(a linkDown raises it, a linkUp clears it). Events that produce no alarm — dropped ones, unrouted
+ones — are equally legitimate and remain in the event layer. The 0..1 is a constraint chosen
+deliberately for the current scope (one event matches at most one rule and affects at most one alarm);
+1:N interpretations, such as a device-reboot trap bulk-clearing many alarms, are a future extension,
+at which point the mapping will live on the alarm lifecycle events</li>
+<li>Every event is stamped with its routing outcome (<code>route_id</code> / <code>action</code> /
+affected <code>alarm_id</code>). This gives <strong>complete lineage</strong>: from an alert back through
+the alarm and its contributing events all the way to the raw PDU</li>
+<li>A trap is <em>one kind</em> of event, not a synonym. Future sources — ICMP liveness state changes,
+syslog — enter the same event layer as additional source types</li>
+<li>Alarm state transitions are themselves recorded as derived events (alarm lifecycle events). There
+are thus <strong>two families</strong> of events with separate namespaces: <strong>ingress events</strong>
+(input from the world) and <strong>alarm lifecycle events</strong> (output of the engine)</li>
+</ul>
+
+<h3 id="boundary-rules-en"><span class="no">2.2</span>Three boundary rules</h3>
+<ol>
+<li><strong>Only the engine creates alarms; only policy creates alerts.</strong> No backflow: alert-layer
+operations (silences etc.) never affect alarm state</li>
+<li><strong>Maintenance windows are an alert-layer feature.</strong> During maintenance, alarms are still
+raised and cleared correctly and remain on record; only notification is suppressed. Mixing the two makes
+"it was actually broken during the maintenance window" impossible to trace afterwards</li>
+<li><strong>ack belongs to the alarm layer, silence to the alert layer.</strong> An ack is an audited
+annotation on a fact ("we are aware of this"); a silence is a decision ("do not notify on this
+condition"). They get separate APIs</li>
+</ol>
+
+<h3 id="legacy-terms-en"><span class="no">2.3</span>Terminology mapping to legacy monitoring tools</h3>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 3</span>Terminology mapping (to prevent misreading by users of legacy monitoring tools)</caption>
+<thead><tr><th>Legacy monitoring tool</th><th>sekisho</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Trap (a line in a text log)</td><td>ingress event</td><td>Structured and stored in full in sekisho</td></tr>
+<tr><td>Problem</td><td>Alarm</td><td></td></tr>
+<tr><td>Event</td><td>alarm lifecycle event</td><td>Note that a legacy tool's "event" is <em>not</em> the event layer</td></tr>
+<tr><td>Trigger + recovery condition</td><td>route + stateful rule</td><td>raise/clear declared in one rule</td></tr>
+<tr><td>Notification actions</td><td>Alert layer</td><td>Out of scope for sekisho</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="scope-en"><span class="no">3</span>Scope</h2>
+<h3><span class="no">3.1</span>In scope (the core engine)</h3>
+<ul>
+<li>Trap reception — <strong>SNMPv1 / v2c / v3</strong>. v1 traps are normalized to v2 form per
+RFC 3584, with the agent-addr field feeding device identity resolution (§5.1); v3 supports USM
+(authentication and privacy), with credential management covered in §11. INFORMs (acknowledged
+notifications) are out of scope. Via snmptrapd forward initially; native listener on port 162 later</li>
+<li>MIB resolution (vendor private MIBs; unresolved OIDs pass through raw — tolerant by design)</li>
+<li>The alert routing table (longest-prefix match on snmpTrapOID + varbind conditions)</li>
+<li>The state engine (raise/clear pairing, flap detection, state keys) = alarm management</li>
+<li>Full event retention with routing-outcome lineage</li>
+<li>alarm.* stream output (webhooks) + ack API</li>
+<li>MCP server (unmatched-trap observability, rule proposals, backtests, apply)</li>
+<li>LLM provider abstraction (Bedrock / local LLM)</li>
+<li>A REST API (the single access surface for the state engine, routes, event search, and ack), with a
+thin CLI (the <code>sekisho</code> command) and a Web UI (route table + counters, active alarm list,
+event search) as its clients</li>
+</ul>
+<h3><span class="no">3.2</span>Out of scope</h3>
+<ul>
+<li><strong>Alert management</strong> (silences, on-call rosters, dedup/grouping, escalation) — added later
+as a subscriber of the alarm.* stream, or delegated to existing tools such as Alertmanager</li>
+<li><strong>Incident management</strong> — a separate system by decision. The only connection point is the
+alarm.* stream. No incident concepts enter the core's repository, process, or database</li>
+<li>Metric polling and gNMI. Nor is there a generic event-source plugin mechanism in v1 — sources are
+built-in implementations; only the conceptual extension point (§2.1) is reserved</li>
+</ul>
+
+<h2 id="architecture-en"><span class="no">4</span>Architecture</h2>
+<figure>
+<svg viewBox="0 0 860 640" role="img" aria-label="Overall architecture">
+  <defs>
+    <marker id="are" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <rect x="20" y="20" width="170" height="48" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="105" y="49" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1a1f24">Network devices</text>
+  <line x1="190" y1="44" x2="270" y2="44" stroke="#6b7280" marker-end="url(#are)"/>
+  <text x="230" y="36" text-anchor="middle" font-size="11" fill="#6b7280">UDP 162</text>
+  <rect x="274" y="20" width="230" height="48" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="389" y="41" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1a1f24">snmptrapd</text>
+  <text x="389" y="58" text-anchor="middle" font-size="11" fill="#6b7280">on existing server · one config line</text>
+  <line x1="504" y1="44" x2="614" y2="44" stroke="#6b7280" marker-end="url(#are)"/>
+  <text x="559" y="36" text-anchor="middle" font-size="11" fill="#6b7280">as before</text>
+  <rect x="618" y="20" width="222" height="48" rx="10" fill="#f8f9fb" stroke="#9aa1a9" stroke-dasharray="6 4"/>
+  <text x="729" y="41" text-anchor="middle" font-size="13.5" font-weight="700" fill="#6b7280">Existing monitoring</text>
+  <text x="729" y="58" text-anchor="middle" font-size="11" fill="#6b7280">legacy tool — unchanged</text>
+  <line x1="389" y1="68" x2="389" y2="120" stroke="#1d4ed8" marker-end="url(#are)"/>
+  <text x="400" y="98" font-size="11.5" fill="#1d4ed8">forward udp:1620 (varbinds intact, re-sent)</text>
+  <rect x="40" y="124" width="560" height="486" rx="14" fill="#ffffff" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="62" y="152" font-size="13" font-weight="700" letter-spacing="2" fill="#1d4ed8">SEKISHO</text>
+  <rect x="70" y="166" width="230" height="52" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="185" y="188" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1f24">Receiver + MIB resolver</text>
+  <text x="185" y="206" text-anchor="middle" font-size="10.5" fill="#6b7280">interprets the PDU as structure</text>
+  <line x1="185" y1="218" x2="185" y2="258" stroke="#6b7280" marker-end="url(#are)"/>
+  <rect x="70" y="262" width="230" height="52" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="185" y="284" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1f24">Routing table</text>
+  <text x="185" y="302" text-anchor="middle" font-size="10.5" fill="#6b7280">longest-prefix match + where</text>
+  <line x1="300" y1="288" x2="356" y2="288" stroke="#6b7280" marker-end="url(#are)"/>
+  <text x="328" y="280" text-anchor="middle" font-size="10.5" fill="#6b7280">stateful</text>
+  <rect x="360" y="262" width="210" height="52" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="465" y="284" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1f24">State engine</text>
+  <text x="465" y="302" text-anchor="middle" font-size="10.5" fill="#6b7280">raise / clear / flapping</text>
+  <line x1="185" y1="314" x2="185" y2="352" stroke="#6b7280" marker-end="url(#are)"/>
+  <rect x="70" y="356" width="230" height="40" rx="10" fill="#f8f9fb" stroke="#9aa1a9"/>
+  <text x="185" y="380" text-anchor="middle" font-size="12" fill="#6b7280">drop (event still stored)</text>
+  <line x1="185" y1="396" x2="185" y2="434" stroke="#6b7280" marker-end="url(#are)"/>
+  <rect x="70" y="438" width="230" height="40" rx="10" fill="#fffbeb" stroke="#d97706"/>
+  <text x="185" y="462" text-anchor="middle" font-size="12" fill="#b45309">unrouted bucket (observed)</text>
+  <line x1="465" y1="314" x2="465" y2="352" stroke="#6b7280" marker-end="url(#are)"/>
+  <rect x="360" y="356" width="210" height="44" rx="10" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="465" y="374" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">PostgreSQL</text>
+  <text x="465" y="392" text-anchor="middle" font-size="10.5" fill="#6b7280">alarm state · config · drafts</text>
+  <polyline points="330,288 330,460 356,460" fill="none" stroke="#6b7280" marker-end="url(#are)"/>
+  <rect x="360" y="438" width="210" height="44" rx="10" fill="#ffffff" stroke="#1d4ed8"/>
+  <text x="465" y="456" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">ClickHouse</text>
+  <text x="465" y="474" text-anchor="middle" font-size="10.5" fill="#6b7280">all events (lineage stamped)</text>
+  <rect x="70" y="536" width="150" height="44" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="145" y="562" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">MCP server</text>
+  <rect x="240" y="536" width="170" height="44" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="325" y="555" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">LLM providers</text>
+  <text x="325" y="571" text-anchor="middle" font-size="10" fill="#6b7280">Bedrock / local</text>
+  <rect x="430" y="536" width="140" height="44" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="500" y="562" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">REST API / CLI / UI</text>
+  <line x1="570" y1="288" x2="644" y2="288" stroke="#6b7280" marker-end="url(#are)"/>
+  <text x="607" y="280" text-anchor="middle" font-size="10.5" fill="#6b7280">alarm.*</text>
+  <rect x="648" y="258" width="192" height="60" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="744" y="282" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a1f24">Webhook delivery</text>
+  <text x="744" y="300" text-anchor="middle" font-size="10.5" fill="#6b7280">to alert layer / incident systems</text>
+</svg>
+<figcaption><span class="fig-no">Figure 7</span>Overall architecture (Phase 1: running alongside existing monitoring)</figcaption>
+</figure>
+<div class="principle">
+<span class="label">Design principle</span>
+The decision engine's hot path never calls an LLM. Deterministic and reproducible.
+</div>
+<p>
+External interfaces are unified <strong>API-first</strong>. All access to the state engine — alarms,
+routes, event search, ack — is exposed as a <strong>REST API</strong>, and the Web UI, the CLI
+(the <code>sekisho</code> command, e.g. <code>sekisho route show</code>), and the MCP server are all
+implemented as thin clients of that same API. Authentication, authorization, auditing, and
+compatibility are thereby managed at a single point. The Web UI is a modern SPA (React), with its
+built assets embedded in the sekisho binary — full access to the engine and its data without giving up
+single-binary distribution and trivial startup. The alarm.* stream (§7), being a push contract, is the
+one other external surface alongside the API.
+</p>
+
+<h2 id="matching-en"><span class="no">5</span>Matching Model and the Alert Routing Table</h2>
+
+<h3 id="trap-anatomy-en"><span class="no">5.1</span>Anatomy of a trap — three roles, kept separate</h3>
+<p>
+sekisho assigns the three roles of <a href="#pdu-anatomy-en">§1.1.1</a> as follows. Keeping them separate is
+the core of the matching design.
+</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 4</span>The three roles and their use in sekisho</caption>
+<thead><tr><th>#</th><th>Information</th><th>Role in sekisho</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>Kind</strong> (snmpTrapOID)</td><td><strong>What routing matches on</strong> (longest-prefix)</td></tr>
+<tr><td>2</td><td><strong>Instance</strong> (instance suffix / index varbind)</td><td><strong>Source of the state key</strong>; never used for matching</td></tr>
+<tr><td>3</td><td><strong>Attributes</strong> (typed values)</td><td><strong>Conditions (where) and transition decisions</strong></td></tr>
+</tbody>
+</table></div>
+<p>
+"Varbind matching = string matching" is not a property of SNMP; it is an artifact of the flattening in
+existing pipelines (<a href="#flattening-en">§1.1.2</a>). sekisho keeps the PDU structured and matches using
+the MIB's type information.
+</p>
+<p>Matching principles that follow from this premise:</p>
+<ol>
+<li><strong>Identify varbinds by OID, not by position.</strong> The MIB's NOTIFICATION-TYPE definition
+(OBJECTS clause) declares which varbinds a trap carries, but vendor implementations sometimes append
+extra varbinds, so ordering is never relied upon</li>
+<li><strong>Write comparisons symbolically; compile them to typed values.</strong> A rule that says
+<code>ifOperStatus: down</code> is resolved by the engine through the MIB enum into
+<code>(base OID 1.3.6.1.2.1.2.2.1.8, INTEGER 2)</code> for comparison. No regex anywhere</li>
+<li><strong>Decompose instance suffixes on receipt.</strong> Each varbind is split into
+<code>(base OID, instance suffix, typed value)</code>. State keys can be built from index varbind values
+(<code>{ifIndex}</code>) or from suffixes (<code>{instance_of(ifOperStatus)}</code>)</li>
+<li><strong>Varbinds whose MIB is missing pass through as raw OID + raw value, and raw-value matching is
+allowed</strong> (graceful degradation)</li>
+</ol>
+<p>
+<strong>Device identity resolution</strong> — the material for state keys — is a first-class stage of
+reception. A device resolves to a <code>device_id</code> in this order: (a) the packet's source IP,
+(b) the <code>snmpTrapAddress.0</code> varbind added by v1→v2 conversion, (c) device identifiers
+carried in varbinds (e.g. sysName), (d) an inventory mapping. <code>{source}</code> in rules refers to
+<strong>this resolved device_id, not the raw source IP</strong> (see §10.1 for how this interacts with
+the reception method). Note that ifIndex may be renumbered by reboots or card swaps, so stable
+identifiers such as ifName should be considered as key material.
+</p>
+
+<h3 id="routing-table-en"><span class="no">5.2</span>Routing table</h3>
+<p>
+The entire rule set is designed as a route table with policies, not as triggers.
+<strong>Matching targets the snmpTrapOID (the kind)</strong>, whose values form a tree under each
+enterprise arc — so longest-prefix matching applies directly. Varbind conditions (<code>where</code>)
+are the analogue of policy-based routing.
+</p>
+<figure>
+<pre><code>routes:
+  - match: { trap_oid: 1.3.6.1.6.3.1.1.5.3 }          # IF-MIB::linkDown (most specific wins)
+    action: { stateful: if-linkdown }
+  - match:
+      trap_oid: 1.3.6.1.4.1.&lt;ent&gt;.2.*                  # some vendor's notification subtree
+      where: { alarmSeverity: info }                    # typed enum comparison (not a regex)
+    action: drop
+  - default:                                           # the default gateway
+      - drop: { trap_oid: 1.3.6.1.4.1.&lt;ent&gt;.9.* }      # prune further prefixes inside the GW
+      - else: { bucket: unrouted }</code></pre>
+<figcaption><span class="fig-no">Figure 8</span>Routing table sketch (the DSL is finalized in the LLD)</figcaption>
+</figure>
+<ul>
+<li>Reuses the network engineer's vocabulary and mental model as-is: <strong>most-specific wins</strong>
+(longest-prefix match), <strong>via default</strong>, and <strong>drop</strong></li>
+<li><strong>Every route carries a hit counter and a last-hit timestamp</strong> (rendered as in
+Figure 9). Drop routes get counters too, keeping "what we are silently discarding" visible at all
+times</li>
+<li>The unrouted bucket is not where traps go to die — it is itself an object of observation, and the
+source of rule proposals (<a href="#mcp-en">§8</a>). The "bucket" is not a separate store: every event
+lands in ClickHouse, so unrouted is a <strong>logical view</strong> over events stamped with
+<code>route_id = ''</code>, with frequency aggregates maintained by a materialized view (and the same
+retention as every other event)</li>
+<li>Routes and rules are plain YAML files under <strong>git</strong>: review, diff, and rollback ride the
+normal development workflow</li>
+<li><strong>Matching is totally ordered and deterministic.</strong> Routes are evaluated by prefix
+length, then by order within the definition file; the first route whose <code>trap_oid</code> and
+<code>where</code> both hold is selected. Duplicate or ambiguous routes, and rules referencing symbols
+the MIB cannot resolve, are detected at load time and rejected or disabled with a warning</li>
+</ul>
+<p>
+The route table must be <strong>renderable</strong> in the same spirit as a network OS's
+<code>show route</code>. The YAML files remain the source of truth, but what an operator looks at is
+always a single table in evaluation order, with counters. The CLI (<code>sekisho route show</code>)
+and the Web UI return the same rendering.
+</p>
+<figure>
+<pre>$ sekisho route show
+Codes: S - stateful, D - drop, U - unrouted, * - via default gateway
+
+     snmpTrapOID prefix                     where           action             hits     last seen
+S    1.3.6.1.6.3.1.1.5.3 (linkDown)         -               rule if-linkdown   12,304   3m
+S    1.3.6.1.6.3.1.1.5.4 (linkUp)           -               rule if-linkdown   12,187   3m
+D    1.3.6.1.4.1.&lt;ent&gt;.2.*                  severity=info   drop               88,412   12s
+D*   1.3.6.1.4.1.&lt;ent&gt;.9.*                  -               drop                4,210   1m
+U*   default                                -               unrouted              312   47s</pre>
+<figcaption><span class="fig-no">Figure 9</span>Rendering the route table (<code>sekisho route show</code>) — evaluation order, hit counters, last seen, in one view</figcaption>
+</figure>
+
+<h3 id="stateful-rules-en"><span class="no">5.3</span>Stateful rules — the three raise/clear patterns</h3>
+<p>Real devices express raise/clear in three broad patterns, and the DSL expresses all of them directly.</p>
+<p><strong>Pattern A: paired kinds</strong> — raise and clear are distinct traps (linkDown / linkUp).</p>
+<figure>
+<pre><code>rule: if-linkdown
+match: { trap: IF-MIB::linkDown }
+key: "{source}:{ifIndex}"            # state identity declared as a key (no LLD needed)
+transition:
+  raise: { severity: major }
+  clear: { trap: IF-MIB::linkUp, same_key: true }
+flap: { window: 5m, count: 5, calm: 15m }</code></pre>
+<figcaption><span class="fig-no">Figure 10</span>Pattern A: paired-kind rule</figcaption>
+</figure>
+<p><strong>Pattern B: status varbind</strong> — a single trap kind whose varbind value decides
+raise/clear. Common on devices that express generic alarm notifications through one trap.</p>
+<figure>
+<pre><code>rule: generic-alarm
+match: { trap: VENDOR-MIB::alarmNotify }
+key: "{source}:{alarmObjectId}"
+transition:
+  raise_when: { where: { alarmStatus: [critical, major, minor] },
+                severity_from: alarmStatus }
+  clear_when: { where: { alarmStatus: cleared } }</code></pre>
+<figcaption><span class="fig-no">Figure 11</span>Pattern B: status-varbind rule</figcaption>
+</figure>
+<p><strong>Pattern C: alarm-ID correlation</strong> — X.733-style designs where the raise and clear
+notifications share a common alarm-identifier varbind. Using that identifier as the key
+(<code>key: "{source}:{alarmSeq}"</code>) reduces this to patterns A/B.</p>
+<p>In every pattern, the design points are the same:</p>
+<ol>
+<li><strong>The raise/clear pair is written in one rule</strong> (no splitting into two triggers, no
+separate recovery expression)</li>
+<li><strong>The state key is declared.</strong> Its material comes from the instance (role 2), never from
+the kind (role 1)</li>
+<li><strong>Transition conditions are written over typed values (role 3).</strong> String regexes appear
+nowhere</li>
+<li>Flapping is declared inside the rule (a time window and count; past the threshold, the alarm
+transitions into the flapping state)</li>
+</ol>
+<p>
+The raise/clear model requires a <strong>degradation policy for lost clears</strong>. Traps can be lost
+in transit (§12); an alarm whose clear was missed would otherwise stay raised forever and erode the
+trustworthiness of the active alarm list. sekisho specifies three mechanisms.
+</p>
+<ol>
+<li><strong>Expiry policy</strong>: a rule may declare <code>expire_after</code> (e.g. 7d); alarms past
+the deadline are auto-cleared with reason <code>expired</code></li>
+<li><strong>Manual clear API</strong>: operators can force-clear with an audit trail. It is
+distinguished from device-originated clears by a reason code (<code>trap / manual / expired</code>)
+recorded on the alarm lifecycle event</li>
+<li><strong>Clears with no matching raise</strong> are recorded as events but cause no state
+transition</li>
+</ol>
+<p>
+Flapping is treated not as notification suppression but as an <strong>explicit alarm state</strong>
+(consistent with the boundary rules of §2.2). When transitions within the window exceed the threshold,
+the alarm enters the flapping state — while every individual transition continues to be recorded as an
+event. A calm period (<code>calm</code>, e.g. 15 minutes without transitions) ends the flapping state;
+start and end are announced via <code>alarm.flapping</code> / <code>alarm.updated</code>. Notification
+damping itself remains the alert layer's responsibility. Alarm timelines are authoritative on
+<code>received_at</code>; handling of closely spaced out-of-order arrivals (a linkUp arriving before
+its linkDown) is defined in the LLD as a grace window.
+</p>
+
+<h2 id="datastore-en"><span class="no">6</span>Datastores</h2>
+<p>Separated by role: <strong>events, statistics, backtests → ClickHouse / state, configuration, metadata → PostgreSQL</strong>.</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 5</span>Division of responsibilities between the two stores</caption>
+<thead><tr><th>Aspect</th><th>ClickHouse</th><th>PostgreSQL</th></tr></thead>
+<tbody>
+<tr><td>Data</td><td>All ingress events, alarm lifecycle events, aggregates</td><td>Active alarms, acks, rule apply history, proposal drafts</td></tr>
+<tr><td>Characteristics</td><td>Append-only, columnar, high compression, fast full scans</td><td>OLTP, small, mutable</td></tr>
+<tr><td>Development</td><td>docker compose (same engine as production)</td><td>docker compose</td></tr>
+<tr><td>Production (one reference setup)</td><td>ClickHouse Cloud (AWS Marketplace / PrivateLink)</td><td>Smallest RDS instance</td></tr>
+</tbody>
+</table></div>
+<p>
+ClickHouse was chosen not for performance but because
+<strong>the full event history that backtesting replays over is kept and scanned on the same engine, in
+the same shape, in development and production</strong>, and because the Firehose → Parquet → Athena ETL
+pipeline disappears entirely.
+TTL + S3 disks provide hot/cold tiering; materialized views keep route counters updated on insert.
+</p>
+<p>Sketch of the event table (varbinds stored in the decomposed form of <a href="#trap-anatomy-en">§5.1</a>):</p>
+<figure>
+<pre><code>CREATE TABLE ingress_events (
+  event_id     UUID,                      -- assigned on receipt; key for idempotent inserts and lineage
+  received_at  DateTime64(3),
+  source_addr  String,                    -- packet source (the forwarder when received via forward)
+  device_id    LowCardinality(String),   -- resolved device identity (§5.1)
+  sys_uptime   UInt64,                    -- first varbind; used to detect device reboots
+  trap_oid     String,                    -- value of snmpTrapOID (the kind)
+  trap_name    LowCardinality(String),   -- when MIB resolution succeeded
+  mib_set      LowCardinality(String),   -- version of the MIB snapshot used for resolution
+  varbinds     Nested(
+    base_oid   String,                    -- object OID with the suffix removed
+    name       String,                    -- resolved MIB name ('' = unresolved)
+    instance   String,                    -- instance suffix
+    value_type LowCardinality(String),
+    raw_value  String,                    -- raw value; basis for re-resolution and backtests
+    value      String                     -- normalized display value (enum label)
+  ),
+  raw_pdu      String,                    -- raw PDU (the end of the lineage chain)
+  route_id     LowCardinality(String),   -- '' = unrouted
+  action       LowCardinality(String),   -- stateful / drop / bucket
+  alarm_id     String                     -- only when a transition was driven
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(received_at)
+ORDER BY (device_id, trap_oid, received_at)
+TTL toDateTime(received_at) + INTERVAL 90 DAY TO DISK 's3'</code></pre>
+<figcaption><span class="fig-no">Figure 12</span>ingress_events table sketch (ClickHouse)</figcaption>
+</figure>
+<p>
+Consistency between the two stores follows one policy: <strong>PostgreSQL is the source of truth for
+alarm state</strong>. Alarm transitions and alarm.* delivery reservations are written in the same
+transaction (transactional outbox). Inserts into ClickHouse are idempotent on <code>event_id</code>;
+recovery after a crash replays the outbox and backfills events. Note that a backtest is not a pure SQL
+computation — it is <strong>a replay of the ordered event stream through the state engine</strong>,
+with ClickHouse as the replay substrate. The end of the retention period and the backtest scope
+(hot tier only, or all tiers) are settled in the LLD (§14). This is also precisely why the state store
+is PostgreSQL: the transactional outbox and alarm transitions require ACID transactions, which a
+document store cannot provide with the same simplicity for the delivery guarantees of §7.
+</p>
+
+<h2 id="alarm-stream-en"><span class="no">7</span>The alarm.* Stream (the contract with upper layers)</h2>
+<p>The single connection point to the future alert layer and incident systems. Its stability is the lifeline of the layer separation.</p>
+<ul>
+<li>Event kinds: <code>alarm.raised</code> / <code>alarm.updated</code> / <code>alarm.flapping</code> /
+<code>alarm.cleared</code> / <code>alarm.acked</code>. <code>alarm.updated</code> fires only when
+severity or annotation attributes change — never on re-observation of the same state (duplicate raises
+increment a counter on the alarm instead). <code>alarm.cleared</code> carries a reason code
+(<code>trap / manual / expired</code>)</li>
+<li>Payload: a stable <code>alarm_id</code>, a <strong>monotonically increasing sequence number per
+alarm_id</strong>, the state key, severity, rule/route identifiers, and the <code>event_id</code> of the
+ingress event that drove the transition (lineage)</li>
+<li>Delivery: webhooks initially. At-least-once, with ordering guaranteed by serialized delivery per
+alarm_id. <strong>Subscribers must deduplicate on (alarm_id, seq)</strong> — this is part of the
+contract. Failed deliveries retry with exponential backoff; after prolonged backlog, full reconciliation
+via <code>list_alarms</code> is the recommended recovery</li>
+<li>Sinks are a pluggable abstraction. The two standard implementations are <strong>webhooks</strong>
+and <strong>custom script execution</strong> (any script invoked with the alarm.* JSON on stdin),
+favoring loose coupling over assumptions about the receiving system. Script execution runs in the
+delivery workers beyond the outbox, isolated from the reception hot path (§12)</li>
+<li>The schema is versioned JSON with backward compatibility maintained (compatibility policy in §14)</li>
+</ul>
+
+<h2 id="mcp-en"><span class="no">8</span>MCP Server and the Rule Lifecycle</h2>
+<p>sekisho is <strong>MCP native</strong>: AI agents (Claude and others) co-maintain the rules. The MCP
+tools themselves are thin wrappers over the REST API of §4, operating on the same surface a human uses
+through the CLI or UI.</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 6</span>MCP tools</caption>
+<thead><tr><th>Tool</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>list_unmatched_traps</code></td><td>Returns the unrouted bucket ordered by frequency; maintenance priority becomes self-evident</td></tr>
+<tr><td><code>sample_trap_events</code></td><td>Returns real event samples with decomposed varbinds for a given kind/device</td></tr>
+<tr><td><code>get_mib_info</code></td><td>Returns the NOTIFICATION-TYPE OBJECTS clause and enum definitions (grounding for proposals)</td></tr>
+<tr><td><code>propose_rule</code></td><td>The LLM drafts a route/rule from MIB definitions + real samples (drafts stored in PostgreSQL)</td></tr>
+<tr><td><code>backtest_rule</code></td><td>Dry-runs a proposed rule <strong>against all historical raw events</strong>: "over the past 30 days: 1,243 matches, 37 alarms generated, average duration 12 minutes"</td></tr>
+<tr><td><code>apply_rule</code></td><td>After human approval, commits to git and reloads the engine</td></tr>
+<tr><td><code>list_routes</code> / <code>show_route</code></td><td>The route table with hit counters</td></tr>
+<tr><td><code>list_alarms</code> / <code>get_alarm</code></td><td>The active alarm list and individual alarms (with lineage)</td></tr>
+</tbody>
+</table></div>
+<p>
+Backtest reproducibility is guaranteed by making <strong>rule evaluation a pure function of (the
+ordered event stream, the rule, a MIB snapshot)</strong>. Time windows are evaluated against
+<code>received_at</code>, never the wall clock; symbolic conditions (<code>ifOperStatus: down</code>)
+are re-resolved against raw values (<code>raw_value</code>) using the MIB snapshot version
+(<code>mib_set</code>) stamped on each event.
+</p>
+<figure>
+<svg viewBox="0 0 940 150" role="img" aria-label="Rule lifecycle">
+  <defs>
+    <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <rect x="10" y="34" width="138" height="56" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="79" y="58" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">observe unmatched</text>
+  <text x="79" y="76" text-anchor="middle" font-size="10" fill="#6b7280">ranked by frequency</text>
+  <line x1="148" y1="62" x2="164" y2="62" stroke="#6b7280" marker-end="url(#arg)"/>
+  <rect x="166" y="34" width="138" height="56" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="235" y="58" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">LLM draft</text>
+  <text x="235" y="76" text-anchor="middle" font-size="10" fill="#6b7280">MIB + real samples</text>
+  <line x1="304" y1="62" x2="320" y2="62" stroke="#6b7280" marker-end="url(#arg)"/>
+  <rect x="322" y="34" width="138" height="56" rx="10" fill="#eef2ff" stroke="#1d4ed8"/>
+  <text x="391" y="58" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">backtest</text>
+  <text x="391" y="76" text-anchor="middle" font-size="10" fill="#6b7280">dry-run on all history</text>
+  <line x1="460" y1="62" x2="476" y2="62" stroke="#6b7280" marker-end="url(#arg)"/>
+  <rect x="478" y="34" width="138" height="56" rx="10" fill="#fffbeb" stroke="#d97706"/>
+  <text x="547" y="58" text-anchor="middle" font-size="12" font-weight="700" fill="#b45309">human approval</text>
+  <text x="547" y="76" text-anchor="middle" font-size="10" fill="#6b7280">impact known in numbers</text>
+  <line x1="616" y1="62" x2="632" y2="62" stroke="#6b7280" marker-end="url(#arg)"/>
+  <rect x="634" y="34" width="138" height="56" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="703" y="58" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">git commit</text>
+  <text x="703" y="76" text-anchor="middle" font-size="10" fill="#6b7280">review · diff · history</text>
+  <line x1="772" y1="62" x2="788" y2="62" stroke="#6b7280" marker-end="url(#arg)"/>
+  <rect x="790" y="34" width="138" height="56" rx="10" fill="#ffffff" stroke="#d3d7dc"/>
+  <text x="859" y="58" text-anchor="middle" font-size="12" font-weight="700" fill="#1a1f24">reload</text>
+  <text x="859" y="76" text-anchor="middle" font-size="10" fill="#6b7280">applied to the engine</text>
+  <polyline points="391,90 391,120 235,120 235,94" fill="none" stroke="#9aa1a9" stroke-dasharray="5 4" marker-end="url(#arg)"/>
+  <text x="313" y="136" text-anchor="middle" font-size="10.5" fill="#6b7280">re-draft if results are poor</text>
+</svg>
+<figcaption><span class="fig-no">Figure 13</span>The rule lifecycle — impact is known in numbers before merging</figcaption>
+</figure>
+<div class="principle">
+<span class="label">Lifecycle</span>
+observe unmatched → LLM draft → confirm impact via backtest → human approval → git → reload.
+Knowing the impact in numbers <em>before</em> merging is the decisive difference from legacy tools.
+</div>
+
+<h3><span class="no">8.1</span>The rules repository and CI/CD (GitHub integration)</h3>
+<p>
+Route and rule YAML lives in a <strong>repository separate from the sekisho codebase</strong>. The
+software's release cycle and the monitoring rules' change cycle are independent, and so is ownership
+(the rules repository belongs to the operations team).
+</p>
+<ul>
+<li><strong>Template generation</strong>: <code>sekisho rules init</code> scaffolds the rules
+repository — directory conventions, sample rules, and a complete CI workflow (GitHub Actions) — so
+PR-driven operation works from the moment the repository is created</li>
+<li><strong>CI</strong>: every PR runs <code>sekisho rules lint</code> (syntax, MIB resolution,
+duplicate-route checks) and a backtest via the REST API; the impact — "1,243 matches over the past
+30 days, 37 alarms generated" — is posted automatically as a PR comment. Reviewers see the diff and its
+impact on the same screen</li>
+<li><strong>CD</strong>: the engine watches only the protected branch (webhook or polling), validates
+merged commits, and loads them. Load outcomes (success / warning / rejection) are recorded in the
+self-monitoring metrics (§12)</li>
+<li><code>apply_rule</code> is implemented as opening a PR against this repository — one mechanism with
+the gate of §11</li>
+</ul>
+
+<h2 id="llm-en"><span class="no">9</span>LLM Providers</h2>
+<ul>
+<li>A single provider abstraction; the initial implementations are <strong>AWS Bedrock</strong>
+(Converse API) and <strong>local LLMs</strong> (OpenAI-compatible endpoints such as Ollama)</li>
+<li>Usage is limited to proposals, explanations, and summaries. <strong>The alarm-decision hot path never
+calls an LLM</strong></li>
+<li>Two paths coexist: external AI agents operating through MCP, and the server's built-in proposal
+feature calling Bedrock or a local model</li>
+</ul>
+
+<h2 id="deploy-en"><span class="no">10</span>Deployment</h2>
+<ul>
+<li><strong>Implementation</strong>: a single Go binary, prioritizing the SNMP/MIB library ecosystem
+and ease of distribution and startup. The built assets of the React Web UI are embedded in the
+binary</li>
+<li><strong>Development</strong>: <code>docker compose up</code> (sekisho + ClickHouse + PostgreSQL) —
+the same engines as production</li>
+<li><strong>Production</strong>: anywhere containers run. As one reference setup on AWS:
+ClickHouse Cloud (via Marketplace, PrivateLink) + RDS (PostgreSQL) + ECS. Where managed ClickHouse
+cannot be adopted, self-hosting is the fallback</li>
+</ul>
+
+<h3><span class="no">10.1</span>Reception options and the migration plan</h3>
+<p>
+The end state is sekisho listening for traps directly on port 162. Since switching to direct reception
+requires changing the trap destination on the devices, the transition period needs a way to obtain a
+copy of the traps with almost no changes to the existing environment. There are three options.
+</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 7</span>Three ways to obtain a copy of the traps during migration</caption>
+<thead><tr><th>Method</th><th>Mechanism</th><th>Source IP</th><th>Impact on existing setup</th></tr></thead>
+<tbody>
+<tr><td><strong>snmptrapd forward</strong></td><td>Add <code>forward default udp:host:1620</code> to snmptrapd.conf; received notifications are re-generated and forwarded</td><td>Lost (becomes the snmptrapd host)</td><td>One config line</td></tr>
+<tr><td><strong>OS-level packet duplication</strong></td><td>Kernel firewall features (nftables <code>dup</code> / iptables <code>TEE</code>) clone incoming UDP 162 packets to the sekisho host</td><td>Preserved</td><td>One mangle rule; snmptrapd untouched</td></tr>
+<tr><td><strong>Second destination on devices</strong></td><td>Add sekisho as an additional trap target on the devices (most devices support multiple targets)</td><td>Preserved</td><td>Config change on every device</td></tr>
+</tbody>
+</table></div>
+<p>
+The choice interacts with the state engine. <strong>Because forward loses the source IP, it satisfies
+the state engine's preconditions only where device identity resolves via varbinds
+(<code>snmpTrapAddress.0</code> or device identifiers, §5.1)</strong>. Where it does not, treat the
+forward-based phase as validation of M1 only (structured retention and unrouted observation), and
+enable the state engine (M2) from packet duplication onward.
+</p>
+<figure>
+<pre># nftables: clone incoming UDP 162 packets to the sekisho host (effectively assumes L2 adjacency)
+nft add table ip mangle
+nft add chain ip mangle prerouting '{ type filter hook prerouting priority mangle; }'
+nft add rule ip mangle prerouting udp dport 162 dup to 192.0.2.10 device eth0
+
+# on older setups (iptables), the TEE target does the same
+iptables -t mangle -A PREROUTING -p udp --dport 162 -j TEE --gateway 192.0.2.10
+
+# on the sekisho host: cloned packets still carry the old server's destination IP
+# (198.51.100.5), so DNAT them to the local address for socket delivery
+nft add rule ip nat prerouting ip daddr 198.51.100.5 udp dport 162 dnat to 192.0.2.10</pre>
+<figcaption><span class="fig-no">Figure 14</span>OS-level packet duplication (192.0.2.10 = sekisho, 198.51.100.5 = the legacy server)</figcaption>
+</figure>
+<p>
+Duplicated packets arrive with the source IP and port preserved, so sekisho can identify devices by
+source address. Two caveats: first, duplication is a one-way kernel clone with no return path — which
+is fine, because traps expect no response. Second, packets are cloned with the destination port still
+162, so sekisho must listen on 162 on a separate host (or a container with its own IP), not alongside
+snmptrapd. In addition, <code>dup</code>/TEE clone packets without rewriting the destination IP, so the
+DNAT on the sekisho host (third block of Figure 14) is mandatory, and the setup effectively assumes L2
+adjacency. Verifying that no firewall or anti-spoofing device on the path drops the cloned packets is a
+pre-deployment checklist item.
+</p>
+<p>
+The recommended sequence is <strong>Phase 1a</strong>: start running alongside via forward with minimal
+effort; switch to <strong>Phase 1b</strong>: packet duplication once the source IP becomes necessary;
+and finally <strong>Phase 2</strong>: direct reception with the device-side destination change,
+retiring snmptrapd.
+</p>
+<p>
+Three operational practices accompany the transition, planned together with the self-monitoring of §12.
+<strong>Parallel-run validation</strong> — reconcile the legacy tool's problem list against sekisho's
+active alarm list over a fixed period, and use the agreement rate as the migration criterion.
+<strong>Duplicate reception policy</strong> — while methods overlap, the same trap may arrive twice;
+a re-raise on the same key causes no state transition (and no extra notification).
+<strong>Rollback</strong> — each phase can be disabled independently, and the legacy side remains
+untouched throughout, so there is always a path back.
+</p>
+
+<h2 id="security-en"><span class="no">11</span>Security Model</h2>
+<p>
+A monitoring system is, to an attacker, the thing you blind first. Trust boundaries and privileges are
+fixed at design time.
+</p>
+<ul>
+<li><strong>git is the single gate for rule changes.</strong> No path — including
+<code>apply_rule</code> — writes engine rules directly; applying via MCP goes only as far as opening a
+pull request. The engine loads rules exclusively from a protected branch, so a human merge is the
+enforced approval point ("human approval" is guaranteed by mechanism, not by convention)</li>
+<li><strong>MCP tools are split into read-only and write.</strong> Observation tools
+(<code>list_* / sample_* / get_* / backtest_rule</code>) and mutation tools
+(<code>propose_rule / apply_rule</code>) carry separate privileges; authentication and authorization
+are per MCP connection</li>
+<li><strong>Data sent to LLMs is governed by policy.</strong> What <code>propose_rule</code> sends to an
+external LLM (Bedrock) is MIB definitions and varbind samples; identifiers such as device IPs can be
+masked. A local-LLM-only mode is provided for environments that forbid external egress</li>
+<li><strong>Webhooks are signed</strong> (HMAC), so subscribers can reject forged alarm.* events</li>
+<li><strong>Direct reception on port 162 (Phase 2) requires a reception ACL and community validation.</strong>
+UDP sources can be spoofed; a source-address allowlist is the first line of defense. SNMPv3 USM
+(authentication and encryption) is supported and, combined with the ACL, hardens spoofing resistance.
+Credentials (engineID, users, keys) are managed as configuration and never stored in plaintext</li>
+</ul>
+
+<h2 id="reliability-en"><span class="no">12</span>Reliability Design</h2>
+<div class="caution">
+<span class="label">Caution</span>
+Traps are UDP with no retransmission and can fail to arrive. Pure trap monitoring cannot distinguish
+"silence = healthy". An ultra-lightweight liveness check on the order of ICMP ping will be added as a
+future event source (device load is effectively zero); it enters the event layer as another source type
+per <a href="#relations-en">§2.1</a>.
+</div>
+<ul>
+<li>MIBs are assumed to be incomplete. Traps with unresolved OIDs still flow through to the event layer
+in raw form (the graceful degradation of <a href="#trap-anatomy-en">§5.1</a>)</li>
+<li><strong>The reception path</strong> never forks or spawns external processes during flapping or
+trap storms (the reason snmptrapd's traphandle is not used). The only place external processes run is
+the alarm.* script sink (§7), isolated in the delivery workers beyond the outbox</li>
+<li><strong>Degradation under storms</strong>: reception and storage are connected by bounded queues;
+while ClickHouse is down, reception continues onto a local disk spool (WAL). Anything dropped beyond
+that is always counted in self-metrics — nothing is discarded silently. Under storm conditions, derived
+processing such as MIB resolution is deferred in a degraded mode</li>
+<li><strong>Self-monitoring</strong>: reception rate, queue depth, drop counts, unrouted ratio, store
+write latency, webhook delivery failures, and time of last trap received are exposed on a standard
+metrics endpoint (Prometheus format). Silence of sekisho itself is detected by an external watchdog via
+heartbeat</li>
+<li><strong>Load target</strong>: sustain 500 traps/sec with zero drops. Storms of 10× that
+(5,000 traps/sec) are absorbed as short bursts by the bounded queues and the spool. This envelope is
+comfortably achievable in a single Go process, which is also the basis for the single-instance
+assumption below</li>
+<li><strong>Availability non-goal</strong>: v1 assumes a single instance; HA is explicitly a non-goal.
+Future horizontal scaling has a natural sharding axis in a device_id hash, since state keys include the
+device</li>
+<li>INFORMs (acknowledged notifications) are not supported. Resilience against UDP loss is provided by
+the combination of expiry policies (§5.3), the future ping liveness source, and the self-monitoring of
+this section</li>
+</ul>
+
+<h2 id="milestones-en"><span class="no">13</span>Milestones</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 8</span>Vertical-slice milestones</caption>
+<thead><tr><th>M</th><th>Content</th><th>Vertical-slice checkpoint</th></tr></thead>
+<tbody>
+<tr><td>M1</td><td>forward reception → MIB resolution → ClickHouse storage, unrouted listing (CLI), public test corpus (pcap / golden files)</td><td>Real traps accumulate in structured form; development and regression tests need no real devices</td></tr>
+<tr><td>M2</td><td>Routing table + state engine + PostgreSQL + alarm.* webhooks</td><td>linkDown/Up raise and clear through a single rule</td></tr>
+<tr><td>M3</td><td>MCP server (unmatched / sample / backtest / apply)</td><td>An AI agent can write a rule and backtest it</td></tr>
+<tr><td>M4</td><td>LLM proposals (Bedrock / local)</td><td>Proposal drafts emerge from unmatched traps</td></tr>
+<tr><td>M5</td><td>Web UI (route table + counters, active alarms, event search)</td><td>The <code>sekisho route show</code> rendering (Figure 9), also on the web</td></tr>
+<tr><td>Later</td><td>Native 162 listener, ping liveness source, alert layer (designed separately)</td><td></td></tr>
+</tbody>
+</table></div>
+<p>
+M2 (the state engine) requires device identity resolution (§5.1). In environments received via forward
+only (Phase 1a), M2 is enabled only after confirming that devices can be resolved through
+<code>snmpTrapAddress.0</code> or varbind-carried identifiers (§10.1).
+</p>
+
+<h2 id="open-questions-en"><span class="no">14</span>Open Questions</h2>
+<ul>
+<li>Compatibility policy for public contracts — the stable surfaces are the alarm.* schema, the rule
+DSL, and the MCP tools; the DB schema and internal APIs are explicitly unstable. All contracts are
+declared unstable until v1.0</li>
+<li>MIB supply — private MIBs are not redistributable, so users bring their own; define the directory
+convention and load spec (only standard MIBs ship in the repository)</li>
+<li>Official name (including whether to release as OSS under the codename sekisho)</li>
+<li>The formal schema of the routing DSL (§5 is a sketch; finalized in the LLD)</li>
+<li>Details of the alarm.* stream schema (including the versioning policy)</li>
+<li>The out-of-order grace window, the end of the retention period, and the backtest scope
+(hot tier only, or all tiers)</li>
+</ul>
+
+</main>
+</div>
+
+<script>
+  // ---- Language switching ----
+  function setLang(lang) {
+    document.documentElement.lang = lang;
+    try { localStorage.setItem('sekisho-lang', lang); } catch (e) {}
+  }
+  document.querySelectorAll('[data-setlang]').forEach(el => {
+    el.addEventListener('click', (ev) => { ev.preventDefault(); setLang(el.dataset.setlang); });
+  });
+  (() => {
+    const fromQuery = new URLSearchParams(location.search).get('lang');
+    let saved = null;
+    try { saved = localStorage.getItem('sekisho-lang'); } catch (e) {}
+    const lang = ['ja', 'en'].includes(fromQuery) ? fromQuery
+               : ['ja', 'en'].includes(saved) ? saved : 'ja';
+    setLang(lang);
+  })();
+
+  // ---- TOC scroll spy (per language block) ----
+  document.querySelectorAll('nav.toc').forEach(nav => {
+    const byId = new Map(Array.from(nav.querySelectorAll('a[href^="#"]'))
+      .map(a => [a.getAttribute('href').slice(1), a]));
+    const targets = Array.from(byId.keys()).map(id => document.getElementById(id)).filter(Boolean);
+    let active = null;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (!visible.length) return;
+      if (active) active.classList.remove('active');
+      active = byId.get(visible[0].target.id) || null;
+      if (active) active.classList.add('active');
+    }, { rootMargin: '0px 0px -70% 0px' });
+    targets.forEach(t => observer.observe(t));
+  });
+</script>
+</body>
+</html>
