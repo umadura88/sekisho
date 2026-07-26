@@ -180,7 +180,7 @@
   <a href="#m0a"><span class="no">3</span>M0a: pcap リプレイ</a>
   <a href="#m0b"><span class="no">4</span>M0b: BER コーデック</a>
   <a href="#m0c"><span class="no">5</span>M0c: 合成生成器</a>
-  <a href="#m1"><span class="no">6</span>M1 以降の接続</a>
+  <a href="#m1"><span class="no">6</span>M1: 受信機ブリーフ</a>
   <a href="#devenv"><span class="no">7</span>開発環境と CI</a>
   <a href="#agent"><span class="no">8</span>実装エージェントへの指示</a>
   <a href="#dod"><span class="no">9</span>受け入れ基準まとめ</a>
@@ -197,8 +197,8 @@
   <p class="subtitle">実装エージェント向けブリーフ。M0(Trap エミュレータ trapgen)から着手し、BER コーデックと公開フィクスチャを先に確立してから M1(受信機)へ進む。</p>
   <dl class="meta-grid">
     <div><dt>Status</dt><dd><span class="badge">Draft</span></dd></div>
-    <div><dt>Last Updated</dt><dd>2026-07-26</dd></div>
-    <div><dt>Scope</dt><dd>M0a → M0c(M1 以降は概要のみ)</dd></div>
+    <div><dt>Last Updated</dt><dd>2026-07-27</dd></div>
+    <div><dt>Scope</dt><dd>M0(完了)+ M1 ブリーフ(§6)</dd></div>
     <div><dt>License</dt><dd>Apache-2.0 + DCO</dd></div>
   </dl>
 </header>
@@ -232,11 +232,13 @@ HLD / LLD が優先する(矛盾を見つけたら実装を止めて報告する
 <caption><span class="tbl-no">表 1</span>マイルストーンと完了条件(DoD)の要約</caption>
 <thead><tr><th>M</th><th>成果物</th><th>完了条件の要点</th></tr></thead>
 <tbody>
-<tr><td><strong>M0a</strong></td><td><code>trapgen replay</code></td><td>pcap 中の Trap を宛先へ再送できる。レート制御 ±5%</td></tr>
-<tr><td><strong>M0b</strong></td><td><code>internal/snmpcodec</code>(BER コーデック)</td><td>BER の往復テスト。<em>当初含めていたサニタイザは実装後に廃止(§4)</em></td></tr>
-<tr><td><strong>M0c</strong></td><td><code>trapgen gen</code></td><td>シナリオ YAML から合成 Trap 生成。5,000 pps 負荷モード。<code>--out</code> で合成 fixture(pcap)を出力</td></tr>
-<tr><td>M1</td><td>受信機 → MIB 解決 → ClickHouse 格納、unrouted 一覧</td><td>HLD §13 / LLD §10 参照(本書 §6)</td></tr>
-<tr><td>M2〜M5</td><td>状態エンジン / MCP / LLM 提案 / Web UI</td><td>HLD §13 参照。本書の範囲外</td></tr>
+<tr><td><strong>M0a</strong> ✓</td><td><code>trapgen replay</code></td><td>完了(PR #1)。レート実測 9.99s / 10s 目標</td></tr>
+<tr><td><strong>M0b</strong> ✓</td><td><code>internal/snmpcodec</code>(BER コーデック)</td><td>完了(PR #2)。<em>当初含めていたサニタイザは実装後に廃止(§4、PR #4)</em></td></tr>
+<tr><td><strong>M0c</strong> ✓</td><td><code>trapgen gen</code></td><td>完了(PR #3)。5,000 pps 実証済み。<code>--out</code> で合成 fixture 出力(PR #4)</td></tr>
+<tr><td><strong>M1a</strong></td><td>受信機コア(UDP → decode → v1 正規化 → device_id → JSON Lines)</td><td>fixture リプレイが golden JSON と一致(§6.1)</td></tr>
+<tr><td><strong>M1b</strong></td><td>MIB リゾルバ(スパイクで方式決定 → 実装)</td><td>linkDown が名前・列挙に解決される(§6.2)</td></tr>
+<tr><td><strong>M1c</strong></td><td>ClickHouse 格納 + 最小 API/CLI(unmatched / events)</td><td>5,000pps×5 分 drop 0・CH 断 30 秒欠損 0(§6.3)</td></tr>
+<tr><td>M2〜M5</td><td>状態エンジン / MCP / LLM 提案 / Web UI</td><td>HLD §13 参照。M1 完了後に本書へ追記</td></tr>
 </tbody>
 </table></div>
 <p>
@@ -351,12 +353,90 @@ events:
 ③生成物を snmpcodec でデコードした golden JSON テストが通る</li>
 </ul>
 
-<h2 id="m1"><span class="no">6</span>M1 以降の接続</h2>
+<h2 id="m1"><span class="no">6</span>M1: 受信機 → MIB 解決 → ClickHouse 格納(実装ブリーフ)</h2>
 <p>
-M0 完了時点で、①BER コーデック(<code>internal/snmpcodec</code>)、②再現可能なテスト入力
-(<code>gen --out</code> の合成 fixtures + gen シナリオ)、③負荷試験器、の 3 点が揃う。M1(受信機 → MIB 解決 →
-ClickHouse 格納、unrouted 一覧 CLI)は LLD §10 のパイプラインの左半分を <code>snmpcodec</code> の上に
-実装する。M1 の詳細ブリーフは M0 完了後に本書を更新して追記する(現段階では着手しないこと)。
+M0 の完了(PR #1〜#4)を受けて本節を追記した(2026-07-27)。M0 で、①BER コーデック
+(<code>internal/snmpcodec</code>)、②再現可能なテスト入力(<code>gen --out</code> の合成 fixtures)、
+③負荷試験器、の 3 点が揃っている。M1 は LLD §10 のパイプラインの<strong>左半分 — 受信・解釈・蓄積・
+観測 —</strong> を縦に貫く。ルーティングテーブルと状態エンジン(M2)はまだ作らない: M1 では全イベントが
+unrouted(<code>route_id = ''</code>)として蓄積され、「何が来ているか」を観測できる状態を作る。
+これは「ルールが 1 本も無くても Event 層は完全である」という HLD の主張を最初に実証する縦切りでもある。
+</p>
+<figure>
+<pre>sekisho/
+├── cmd/sekisho/            # serve + CLI(unmatched / events。REST クライアント)
+├── internal/
+│   ├── receiver/           # M1a: UDP listener・v1→v2 正規化・device_id 解決
+│   ├── event/              # M1a: Event 構造体・event_id(UUIDv7)・golden JSON 形式
+│   ├── mib/                # M1b: MIB ロード・シンボル解決・mib_set
+│   ├── store/ch/           # M1c: DDL 管理・バッチ挿入・ディスクスプール
+│   └── api/                # M1c: /healthz /metrics /api/v1/unmatched /api/v1/events
+└── deploy/compose.yaml     # M1c: 開発用 ClickHouse(PostgreSQL は M2 で追加)</pre>
+<figcaption><span class="fig-no">図 4</span>M1 のパッケージ配置(M0 の trapgen とは独立に積む)</figcaption>
+</figure>
+
+<h3><span class="no">6.1</span>M1a: 受信と正規化</h3>
+<ul>
+<li><strong>listener</strong>: <code>sekisho.yaml</code> の <code>listeners</code>(LLD §11)のうち
+udp のみ実装。SO_RCVBUF 8MB、有界チャネル cap 65,536、溢れは drop + 自己カウンタ(LLD §10)。
+まずは forward 受信(1620)を想定するが、bind 先は設定に従うだけで 162 でも動く</li>
+<li><strong>decode</strong>: <code>internal/snmpcodec</code> をそのまま使う。TrapV1 / TrapV2 以外の
+PDU(Get 系など)は統計に数えて破棄する</li>
+<li><strong>v1→v2 正規化(RFC 3584)</strong>: snmpTrapOID の導出(generic 0〜5 → 対応する標準
+Trap OID、enterpriseSpecific(6) → <code>enterprise.0.specific</code>)。v1 の agent-addr は
+<code>snmpTrapAddress.0</code>(<code>1.3.6.1.6.3.18.1.3.0</code>)として varbind 末尾に付与する —
+これが forward 経由の装置同定(HLD §10.1)を支える</li>
+<li><strong>device_id 解決</strong>(HLD §5.1 の優先順の M1 部分集合): <code>snmpTrapAddress.0</code>
+varbind があればその値、無ければパケット送信元 IP。インベントリ連携は将来</li>
+<li><strong>event_id</strong>: 受信時に UUIDv7 を採番(LLD §5)</li>
+<li><strong>出力</strong>: この段階では構造化イベントを JSON Lines で標準出力へ(ClickHouse は M1c)。
+この JSON がそのまま golden 形式・API の応答形式の原型になる</li>
+</ul>
+<p>
+DoD: ①<code>tests/fixtures/</code> の合成 fixture を <code>trapgen replay</code> で流し込み、出力が
+期待 golden JSON と一致する。②v1 で生成した fixture が正規化されて v2 と同一のイベント形になり、
+device_id が agent-addr 由来で解決される。③非 SNMP パケットを混ぜてもクラッシュせず統計に載る。
+</p>
+
+<h3><span class="no">6.2</span>M1b: MIB リゾルバ</h3>
+<ul>
+<li><strong>最初の作業は方式のスパイク(比較検証)</strong>: 候補は「純 Go の SMI パーサライブラリの採用」
+と「必要部分だけの自前実装」。判定基準は ①NOTIFICATION-TYPE の OBJECTS 句と INTEGER 列挙
+(SYNTAX / TEXTUAL-CONVENTION)が取得できる ②壊れた MIB が混ざってもロード全体が死なない
+③依存が少なく純 Go である、の 3 点。<strong>結論と根拠を本書に追記してから</strong>実装に入る</li>
+<li><strong>機能</strong>: <code>mibs/std/</code> のロード → OID→シンボル表・NOTIFICATION-TYPE 定義表・
+列挙表を構築。varbind 分解(base_oid / instance / name / value_type / raw_value / value)。
+<code>mib_set</code> = ロード集合の正規化 SHA-256 先頭 12 桁(LLD §9)</li>
+<li><strong>縮退動作</strong>: 未解決 OID は name 空のまま raw を保持して通す(HLD §5.1)。
+未解決率をカウンタで公開する</li>
+<li><strong>同梱 MIB</strong>: SNMPv2-SMI / SNMPv2-TC / SNMPv2-MIB / IF-MIB / SNMP-COMMUNITY-MIB
+(IETF 由来のみ。LLD §9)</li>
+</ul>
+<p>
+DoD: ①linkDown fixture の ifOperStatus が名前と列挙(down(2))に解決される。②IF-MIB を意図的に
+欠いた構成でも受信が継続し、raw のまま格納される。③同じ MIB 構成なら mib_set が安定している。
+</p>
+
+<h3><span class="no">6.3</span>M1c: ClickHouse 格納と観測面</h3>
+<ul>
+<li><strong>compose</strong>: <code>deploy/compose.yaml</code>(ClickHouse 単体)と
+<code>make compose-up / compose-down</code></li>
+<li><strong>DDL</strong>: HLD 図 12 の <code>ingress_events</code> + LLD §5.2 の
+<code>unrouted_summary</code> / <code>route_counters</code> MV。起動時にマイグレーションとして適用する。
+M1 では全行が <code>route_id = ''</code>・<code>action = 'bucket'</code></li>
+<li><strong>batcher</strong>: flush = 1 秒 or 10,000 行の先勝ち。<code>event_id</code> による冪等挿入。
+ClickHouse 停止時はディスクスプール(64MB セグメント・起動時リプレイ)に退避する(LLD §10)</li>
+<li><strong>最小 API</strong>(LLD §7 の部分集合): <code>GET /healthz</code>、<code>GET /metrics</code>
+(受信レート・drop 数・未解決率・CH 書き込み遅延・スプール深度)、<code>GET /api/v1/unmatched</code>、
+<code>GET /api/v1/events</code>(期間・device 絞り込みのみ)</li>
+<li><strong>CLI</strong>: <code>sekisho serve</code> / <code>sekisho unmatched</code> /
+<code>sekisho events search</code>(API の薄いクライアント。HLD §4 の API ファースト)</li>
+</ul>
+<p>
+DoD: ①<code>trapgen gen --pps 5000 --duration 5m</code> を drop 0 で全量格納(送信数 = ClickHouse
+行数の完全一致)。②<code>sekisho unmatched</code> が gen の Trap 種別を頻度順で表示する。
+③実行中に ClickHouse を 30 秒停止しても欠損 0(スプールからの回復)。④<code>/metrics</code> に
+上記の主要カウンタがすべて現れる。
 </p>
 
 <h2 id="devenv"><span class="no">7</span>開発環境と CI</h2>
@@ -366,9 +446,12 @@ ClickHouse 格納、unrouted 一覧 CLI)は LLD §10 のパイプラインの左
 <code>make lint</code>(<code>golangci-lint run</code>)</li>
 <li>CI(<code>.github/workflows/ci.yml</code> を新設): push / PR で build・test(-race)・lint を実行。
 既存の <code>pages.yml</code>(<code>site/**</code> のみ発火)には触れない</li>
-<li>依存は最小に保つ。現時点で許可されている外部依存: <code>gopacket</code>(pcap I/O と
-パケット再構成)、YAML パーサ、テストアサーション。<strong>SNMP ライブラリは追加しない</strong>
-(snmpcodec は自前実装。§4.2 の理由)</li>
+<li>依存は最小に保つ。許可されている外部依存: <code>gopacket</code>(pcap I/O)、YAML パーサ、
+テストアサーション。<strong>SNMP ライブラリは追加しない</strong>(snmpcodec は自前実装。§4.1 の理由)</li>
+<li>M1 で追加を許可する依存: <code>clickhouse-go</code> v2(CH クライアント)、
+<code>google/uuid</code>(UUIDv7)、<code>prometheus/client_golang</code>(/metrics)。
+HTTP サーバは標準ライブラリ <code>net/http</code> で足りる。MIB パーサは M1b のスパイクで決定する
+(採用する場合も純 Go であること)</li>
 </ul>
 
 <h2 id="agent"><span class="no">8</span>実装エージェントへの指示</h2>
@@ -394,6 +477,9 @@ main への直接 push はしない</li>
 <tr><td>M0a</td><td>UDP/162 抽出の正確性 / 送出バイト列の無加工一致 / レート ±5% / dry-run の無害性 / .gitignore・Makefile・CI 整備</td></tr>
 <tr><td>M0b</td><td>BER 往復一致(全 PDU 種別・全値型・整数境界値)/ HLD linkDown 例の golden / 不正入力の拒否</td></tr>
 <tr><td>M0c</td><td>正しい v2c/v1 Trap 構造 / seed 決定性 / 5,000 pps × 5 分 ±5% / golden JSON テスト / <code>--out</code> fixture のバイト再現性と down/up 対の完全性</td></tr>
+<tr><td>M1a</td><td>fixture リプレイ → golden JSON 一致 / v1→v2 正規化と agent-addr 由来の device_id / 非 SNMP パケット耐性</td></tr>
+<tr><td>M1b</td><td>linkDown の名前・列挙(down(2))解決 / MIB 欠け時の縮退継続 / mib_set の安定性 / スパイク結論の本書への追記</td></tr>
+<tr><td>M1c</td><td>5,000pps × 5 分 drop 0・送信数 = CH 行数 / unmatched 頻度順表示 / CH 断 30 秒で欠損 0 / /metrics に主要カウンタ</td></tr>
 </tbody>
 </table></div>
 
