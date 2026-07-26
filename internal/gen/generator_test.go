@@ -75,9 +75,9 @@ func TestBuildLinkTrap_MatchesHLDShape(t *testing.T) {
 }
 
 // captureSend returns a sendFunc that appends every payload to a slice.
-func captureSend() (*[][]byte, func([]byte) error) {
+func captureSend() (*[][]byte, func(sendMeta, []byte) error) {
 	var sent [][]byte
-	return &sent, func(p []byte) error {
+	return &sent, func(_ sendMeta, p []byte) error {
 		cp := append([]byte(nil), p...)
 		sent = append(sent, cp)
 		return nil

@@ -178,7 +178,7 @@
   <a href="#purpose"><span class="no">1</span>目的と前提</a>
   <a href="#roadmap"><span class="no">2</span>マイルストーン全体像</a>
   <a href="#m0a"><span class="no">3</span>M0a: pcap リプレイ</a>
-  <a href="#m0b"><span class="no">4</span>M0b: サニタイザ</a>
+  <a href="#m0b"><span class="no">4</span>M0b: BER コーデック</a>
   <a href="#m0c"><span class="no">5</span>M0c: 合成生成器</a>
   <a href="#m1"><span class="no">6</span>M1 以降の接続</a>
   <a href="#devenv"><span class="no">7</span>開発環境と CI</a>
@@ -214,15 +214,17 @@ HLD / LLD が優先する(矛盾を見つけたら実装を止めて報告する
 理由は 3 つある。①実環境(既存監視サーバ)で <code>tcpdump</code> により採取した本物の Trap を
 開発環境で何度でも再生できるようになる。②pcap の解釈と Trap の送出には SNMP の BER
 エンコード/デコードの実装が必要であり、これは M1 受信機の中核(<code>internal/snmpcodec</code>)と
-共通のコードになる — M0 は回り道ではなくコーデックのブートストラップである。③サニタイズ済みの
-キャプチャは公開テストコーパス(LLD §14)になり、以降の全マイルストーンの回帰テスト基盤になる。
+共通のコードになる — M0 は回り道ではなくコーデックのブートストラップである。③<code>gen --out</code> が
+生成する合成 fixture は公開テストコーパス(LLD §14)になり、以降の全マイルストーンの回帰テスト
+基盤になる。
 </p>
 <div class="caution">
 <span class="label">機密ルール(厳守)</span>
-実環境で採取した生の pcap には実在の装置 IP・コミュニティ文字列・機器名が含まれる。
-<strong>生 pcap は絶対にコミットしない</strong>。<code>.gitignore</code> に <code>*.pcap</code> を含め、
-<code>tests/fixtures/</code> 配下には M0b のサニタイザを通した成果物(<code>*.fixture.pcap</code> に
-リネームしたもの)だけを置く。ドキュメント・コード・コミットメッセージに装置ベンダの実名を書かない。
+実環境で採取した生の pcap には実在の装置 IP・コミュニティ文字列・機器名・ベンダ識別子が含まれる。
+<strong>生 pcap は、いかなる加工を経てもリポジトリに入れない</strong>(ローカルでの replay 専用)。
+<code>.gitignore</code> に <code>*.pcap</code> を含め、<code>tests/fixtures/</code> 配下に置けるのは
+<code>trapgen gen --out</code> が生成した<strong>合成 fixture</strong>(<code>*.fixture.pcap</code>)だけである。
+ドキュメント・コード・コミットメッセージに装置ベンダの実名を書かない。
 </div>
 
 <h2 id="roadmap"><span class="no">2</span>マイルストーン全体像</h2>
@@ -231,8 +233,8 @@ HLD / LLD が優先する(矛盾を見つけたら実装を止めて報告する
 <thead><tr><th>M</th><th>成果物</th><th>完了条件の要点</th></tr></thead>
 <tbody>
 <tr><td><strong>M0a</strong></td><td><code>trapgen replay</code></td><td>pcap 中の Trap を宛先へ再送できる。レート制御 ±5%</td></tr>
-<tr><td><strong>M0b</strong></td><td><code>trapgen sanitize</code> + <code>internal/snmpcodec</code></td><td>実キャプチャを匿名化した共有可能 pcap を出力。BER の往復テスト</td></tr>
-<tr><td><strong>M0c</strong></td><td><code>trapgen gen</code></td><td>シナリオ YAML から合成 Trap 生成。5,000 pps 負荷モード</td></tr>
+<tr><td><strong>M0b</strong></td><td><code>internal/snmpcodec</code>(BER コーデック)</td><td>BER の往復テスト。<em>当初含めていたサニタイザは実装後に廃止(§4)</em></td></tr>
+<tr><td><strong>M0c</strong></td><td><code>trapgen gen</code></td><td>シナリオ YAML から合成 Trap 生成。5,000 pps 負荷モード。<code>--out</code> で合成 fixture(pcap)を出力</td></tr>
 <tr><td>M1</td><td>受信機 → MIB 解決 → ClickHouse 格納、unrouted 一覧</td><td>HLD §13 / LLD §10 参照(本書 §6)</td></tr>
 <tr><td>M2〜M5</td><td>状態エンジン / MCP / LLM 提案 / Web UI</td><td>HLD §13 参照。本書の範囲外</td></tr>
 </tbody>
@@ -283,45 +285,37 @@ M0a → M0b → M0c は直列で実装する(M0b が M0a のパケット取り�
 送出されない。④<code>--dry-run</code> がネットワークに何も出さない</li>
 </ul>
 
-<h2 id="m0b"><span class="no">4</span>M0b: サニタイザ(<code>trapgen sanitize</code>)</h2>
-<h3><span class="no">4.1</span>コマンド仕様</h3>
-<figure>
-<pre>trapgen sanitize --in real.pcap --out shareable.fixture.pcap --seed &lt;string&gt; [flags]
-
-  --seed          IP マッピングの決定性の種(必須。同じ種なら同じ写像)
-  --community S   コミュニティ文字列の書き換え先(既定: "public")
-  --scrub-strings varbind の OCTET STRING 値を "scrubbed-&lt;n&gt;" に置換(既定: off)
-  --report        置換の対応表(元 IP → 匿名 IP)を標準エラーへ出力</pre>
-<figcaption><span class="fig-no">図 3</span>sanitize サブコマンドのフラグ仕様</figcaption>
-</figure>
-<h3><span class="no">4.2</span>実装要件</h3>
+<h2 id="m0b"><span class="no">4</span>M0b: BER コーデック(サニタイザは廃止)</h2>
+<div class="caution">
+<span class="label">決定の記録(2026-07-26)</span>
+当初 M0b に含めていたキャプチャ匿名化ツール(trapgen sanitize)は、実装・検証を終えた後に
+<strong>廃止した</strong>。理由: Trap の enterprise OID(<code>1.3.6.1.4.1.&lt;vendor&gt;</code>)は
+IANA の公開レジストリで逆引きできるベンダ識別子であり、IP を置換しても残る。かといって OID を
+書き換えれば「どの Trap か」という意味そのものが壊れるため、<strong>意味を保ったままの匿名化は
+原理的に成立しない</strong>。中途半端なサニタイザは「通したから安全」という誤認を生み、公開事故を
+誘発するため、存在しない方が安全である。公開 fixture の供給は <code>trapgen gen --out</code>(§5)に
+よる合成に一本化し、実キャプチャはローカルの replay 専用とする(§1)。
+</div>
+<h3><span class="no">4.1</span>internal/snmpcodec(存続する成果物)</h3>
 <ul>
-<li><strong><code>internal/snmpcodec</code> をここで新設する</strong>。SNMPv1 / v2c メッセージの
-BER デコード・エンコード(メッセージ構造・PDU・varbind リスト・基本型)。外部 SNMP ライブラリに
-依存せず自前実装とする — このパッケージが M1 受信機の中核になるため、依存を持ち込まない</li>
-<li>IP の匿名化: 送信元・宛先 IP と、varbind 内の IpAddress 型・v1 の agent-addr を、
-HMAC(seed, 元IP) に基づいて <code>198.51.100.0/24</code> → 枯渇時 <code>203.0.113.0/24</code>
-(いずれも RFC 5737 ドキュメント用レンジ)へ<strong>一貫写像</strong>する(同じ元 IP は常に同じ匿名 IP)</li>
-<li>コミュニティ文字列は全パケットで置換する。IP/UDP チェックサムは gopacket の再シリアライズで
-再計算する</li>
-<li><strong>変更しないフィールドはバイト単位で保存されること</strong>。デコード → 無変更エンコードの
-往復でバイト列が一致することをテストで保証する(BER の不定長・冗長表現がある場合は正規化して良いが、
-その場合は往復一致の対象を「再エンコード後」に置く)</li>
+<li>SNMPv1 / v2c メッセージの BER デコード・エンコード(メッセージ構造・PDU・varbind リスト・基本型)。
+外部 SNMP ライブラリに依存せず自前実装とする — このパッケージが M1 受信機の中核になるため、
+依存を持ち込まない</li>
+<li><strong>往復契約</strong>: decode(encode(m)) == m が常に成り立ち、デコード済みメッセージの
+再エンコードは羃等である。エンコードは常に正規形(最小長・確定長)とする</li>
 </ul>
-<h3><span class="no">4.3</span>テストと DoD</h3>
+<h3><span class="no">4.2</span>テストと DoD</h3>
 <ul>
-<li>DoD: ①合成した「機密入り」pcap を sanitize し、出力に元 IP・元コミュニティが 1 バイトも
-現れない(バイナリ grep で検証)。②同じ seed で 2 回実行した出力が一致する。③sanitize 済み pcap を
-<code>trapgen replay</code> で再生でき、snmpcodec で再デコードできる。④往復(decode → encode)
-一致テストが通る</li>
-<li>この DoD を満たしたら、実環境キャプチャをユーザがローカルで sanitize し、共有可能になったものを
-<code>tests/fixtures/</code> の最初の公開フィクスチャとして追加する(追加判断はユーザが行う)</li>
+<li>DoD: ①全 PDU 種別・全値型・整数境界値での往復一致テストが通る。②HLD §1.1.1 の linkDown 例を
+golden テストとして再現できる。③壊れた入力(切り詰め・非 SEQUENCE)をエラーとして拒否する</li>
+<li>既知の制限: 標準ライブラリ encoding/asn1 に依拠するため、<strong>不定長(indefinite length)
+BER はデコードできない</strong>。実運用の装置実装ではまれだが、M1 受信機の既知制限として引き継ぐ</li>
 </ul>
 
 <h2 id="m0c"><span class="no">5</span>M0c: 合成生成器(<code>trapgen gen</code>)</h2>
 <h3><span class="no">5.1</span>コマンド仕様とシナリオ YAML</h3>
 <figure>
-<pre>trapgen gen --scenario scenario.yaml --target 127.0.0.1:1620 [--pps N] [--duration 5m]
+<pre>trapgen gen --scenario scenario.yaml (--target host:port | --out fixture.pcap) [--pps N] [--duration 5m]
 
 # scenario.yaml
 version: 1
@@ -339,7 +333,7 @@ events:
   - kind: generic_alarm          # パターン B 型(状態 varbind 付き汎用アラーム)
     trap_oid: 1.3.6.1.4.1.99999.1.1
     rate_per_min: 10</code></pre>
-<figcaption><span class="fig-no">図 4</span>gen サブコマンドとシナリオ YAML</figcaption>
+<figcaption><span class="fig-no">図 3</span>gen サブコマンドとシナリオ YAML</figcaption>
 </figure>
 <h3><span class="no">5.2</span>実装要件と DoD</h3>
 <ul>
@@ -348,6 +342,10 @@ events:
 <li><code>--seed</code> で全乱数を決定化できること(同じシナリオ + seed = 同じイベント列。
 後の回帰テスト・負荷試験の再現性のため)</li>
 <li><code>--pps N</code> はシナリオの時間軸を無視した負荷モード(イベントを丸めて毎秒 N 発)</li>
+<li><code>--out &lt;file.pcap&gt;</code> は送出の代わりに合成 fixture を書き出す(<code>--target</code> と排他)。
+タイムスタンプは固定エポック + 仮想時刻で決まり、同じ(シナリオ, seed, duration)の出力は
+<strong>バイト単位で再現</strong>される。シナリオ終了時には保留中の linkUp をフラッシュし、
+全 linkDown に対応する linkUp が必ず含まれる。これが公開 fixture(§1)の唯一の供給経路である</li>
 <li>DoD: ①シナリオの linkdown_up が down → up の順で対で生成される。②loopback で
 <code>--pps 5000</code> を 5 分間維持し、送出実測が ±5% 以内(LLD §14 の負荷テストの土台)。
 ③生成物を snmpcodec でデコードした golden JSON テストが通る</li>
@@ -356,7 +354,7 @@ events:
 <h2 id="m1"><span class="no">6</span>M1 以降の接続</h2>
 <p>
 M0 完了時点で、①BER コーデック(<code>internal/snmpcodec</code>)、②再現可能なテスト入力
-(sanitize 済み fixtures + gen シナリオ)、③負荷試験器、の 3 点が揃う。M1(受信機 → MIB 解決 →
+(<code>gen --out</code> の合成 fixtures + gen シナリオ)、③負荷試験器、の 3 点が揃う。M1(受信機 → MIB 解決 →
 ClickHouse 格納、unrouted 一覧 CLI)は LLD §10 のパイプラインの左半分を <code>snmpcodec</code> の上に
 実装する。M1 の詳細ブリーフは M0 完了後に本書を更新して追記する(現段階では着手しないこと)。
 </p>
@@ -394,8 +392,8 @@ main への直接 push はしない</li>
 <thead><tr><th>M</th><th>チェック項目</th></tr></thead>
 <tbody>
 <tr><td>M0a</td><td>UDP/162 抽出の正確性 / 送出バイト列の無加工一致 / レート ±5% / dry-run の無害性 / .gitignore・Makefile・CI 整備</td></tr>
-<tr><td>M0b</td><td>元 IP・コミュニティの完全除去(バイナリ検証)/ seed 決定性 / 往復一致テスト / sanitize 出力の再生・再デコード可能性</td></tr>
-<tr><td>M0c</td><td>正しい v2c/v1 Trap 構造 / seed 決定性 / 5,000 pps × 5 分 ±5% / golden JSON テスト</td></tr>
+<tr><td>M0b</td><td>BER 往復一致(全 PDU 種別・全値型・整数境界値)/ HLD linkDown 例の golden / 不正入力の拒否</td></tr>
+<tr><td>M0c</td><td>正しい v2c/v1 Trap 構造 / seed 決定性 / 5,000 pps × 5 分 ±5% / golden JSON テスト / <code>--out</code> fixture のバイト再現性と down/up 対の完全性</td></tr>
 </tbody>
 </table></div>
 

@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net"
 	"time"
 
 	"github.com/gopacket/gopacket"
@@ -125,4 +126,45 @@ func (w *Writer) WritePacket(ts time.Time, data []byte) error {
 		Length:        len(data),
 	}
 	return w.w.WritePacket(ci, data)
+}
+
+// NewEthernetWriter creates a classic pcap writer with an Ethernet link
+// type and the conventional 64KB snap length — the framing used for
+// synthetic fixture files.
+func NewEthernetWriter(w io.Writer) (*Writer, error) {
+	return NewWriter(w, layers.LinkTypeEthernet, 65535)
+}
+
+// Synthetic MAC addresses used by BuildUDPFrame. The link-layer framing of
+// generated fixtures carries no information; it exists only so the payload
+// can live in a valid pcap and be replayed.
+var (
+	syntheticSrcMAC = net.HardwareAddr{0x02, 0x00, 0x00, 0x00, 0x00, 0x01}
+	syntheticDstMAC = net.HardwareAddr{0x02, 0x00, 0x00, 0x00, 0x00, 0x02}
+)
+
+// BuildUDPFrame serializes an Ethernet/IPv4/UDP frame carrying payload,
+// with header lengths and checksums computed. Used to wrap synthetic SNMP
+// messages into pcap fixtures.
+func BuildUDPFrame(srcIP, dstIP net.IP, srcPort, dstPort uint16, payload []byte) ([]byte, error) {
+	eth := &layers.Ethernet{
+		SrcMAC: syntheticSrcMAC, DstMAC: syntheticDstMAC,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
+	ip := &layers.IPv4{
+		Version: 4, IHL: 5, TTL: 64,
+		Protocol: layers.IPProtocolUDP,
+		SrcIP:    srcIP, DstIP: dstIP,
+	}
+	udp := &layers.UDP{SrcPort: layers.UDPPort(srcPort), DstPort: layers.UDPPort(dstPort)}
+	if err := udp.SetNetworkLayerForChecksum(ip); err != nil {
+		return nil, err
+	}
+
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
+	if err := gopacket.SerializeLayers(buf, opts, eth, ip, udp, gopacket.Payload(payload)); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
