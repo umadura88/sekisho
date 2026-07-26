@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sekisho — Implementation Plan</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1f24;
+    --muted: #6b7280;
+    --faint: #9aa1a9;
+    --accent: #1d4ed8;
+    --accent-soft: #eef2ff;
+    --border: #e5e7eb;
+    --border-strong: #d3d7dc;
+    --code-bg: #f8f9fb;
+    --head-rule: #1a1f24;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.8;
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout { display: flex; max-width: 1240px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; align-self: flex-start;
+    width: 256px; flex-shrink: 0;
+    max-height: 100vh; overflow-y: auto;
+    padding: 3rem 1.25rem 3rem 2rem;
+    font-size: 0.8rem;
+    border-right: 1px solid var(--border);
+  }
+  nav.toc .toc-title {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    color: var(--faint); text-transform: uppercase; margin-bottom: 0.9rem;
+  }
+  nav.toc a {
+    display: flex; gap: 0.5em;
+    color: var(--muted); text-decoration: none;
+    padding: 0.22rem 0.6rem; margin-left: -0.6rem;
+    border-radius: 5px; line-height: 1.5;
+  }
+  nav.toc a .no { color: var(--faint); font-variant-numeric: tabular-nums; flex-shrink: 0; width: 2em; }
+  nav.toc a:hover { color: var(--fg); background: #f3f4f6; }
+  nav.toc a.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  nav.toc a.active .no { color: var(--accent); }
+  main { flex: 1; min-width: 0; max-width: 800px; padding: 3rem 3rem 8rem; }
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; }
+    nav.toc { position: static; width: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--border); padding: 1rem 1.25rem; }
+    nav.toc .toc-title { cursor: pointer; margin-bottom: 0; user-select: none; }
+    nav.toc .toc-title::after { content: " ▸"; }
+    nav.toc.open .toc-title { margin-bottom: 0.9rem; }
+    nav.toc.open .toc-title::after { content: " ▾"; }
+    nav.toc:not(.open) a { display: none; }
+    main { padding: 1.5rem 1.25rem 5rem; }
+    header.cover h1 { font-size: 1.7rem; }
+    header.cover .subtitle { font-size: 0.95rem; }
+  }
+  @media (max-width: 700px) {
+    figure { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    figure svg { min-width: 640px; }
+  }
+  header.cover { margin-bottom: 3.5rem; }
+  header.cover .kicker {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.75rem;
+  }
+  header.cover h1 {
+    font-size: 2.3rem; line-height: 1.25; margin: 0 0 0.75rem;
+    letter-spacing: -0.015em; border: none; padding: 0;
+  }
+  header.cover .subtitle { color: var(--muted); margin: 0 0 1.75rem; font-size: 1.02rem; }
+  .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    border-top: 2px solid var(--head-rule); border-bottom: 1px solid var(--border);
+    padding: 0.9rem 0; gap: 0.25rem 1.5rem;
+  }
+  .meta-grid div { font-size: 0.85rem; }
+  .meta-grid dt { color: var(--faint); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 0; }
+  .meta-grid dd { margin: 0.1rem 0 0; font-weight: 500; }
+  .badge {
+    display: inline-block; font-size: 0.72rem; font-weight: 700;
+    color: #92400e; background: #fef3c7; border-radius: 999px;
+    padding: 0.05rem 0.6rem; vertical-align: 1px;
+  }
+  h2 {
+    font-size: 1.45rem; line-height: 1.4; letter-spacing: -0.01em;
+    margin: 4rem 0 1.1rem; padding-top: 1.6rem;
+    border-top: 2px solid var(--head-rule);
+    scroll-margin-top: 1.25rem;
+  }
+  h3 { font-size: 1.05rem; margin: 2.4rem 0 0.7rem; scroll-margin-top: 1.25rem; }
+  h2 .no, h3 .no { color: var(--accent); margin-right: 0.5em; font-variant-numeric: tabular-nums; }
+  a { color: var(--accent); text-decoration: none; }
+  main a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.4em; }
+  li { margin: 0.3em 0; }
+  li::marker { color: var(--faint); }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 0.1em 0.4em; border-radius: 4px; overflow-wrap: anywhere; }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.1rem 1.35rem;
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  figure { margin: 1.75rem 0; }
+  figure pre { margin: 0; }
+  figcaption { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 0.6rem; }
+  figcaption .fig-no { font-weight: 700; color: var(--fg); margin-right: 0.5em; }
+  .tablewrap { overflow-x: auto; margin: 1.4rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; line-height: 1.65; }
+  caption { caption-side: top; text-align: left; color: var(--muted); font-size: 0.8rem; padding-bottom: 0.5rem; }
+  caption .tbl-no { font-weight: 700; color: var(--fg); margin-right: 0.5em; }
+  th {
+    text-align: left; font-weight: 700; font-size: 0.82rem;
+    border-bottom: 2px solid var(--head-rule);
+    padding: 0.45rem 0.8rem; white-space: nowrap;
+  }
+  td { border-bottom: 1px solid var(--border); padding: 0.55rem 0.8rem; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 1px solid var(--border-strong); }
+  .principle {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1.3rem;
+    margin: 1.6rem 0;
+  }
+  .principle .label {
+    display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.15rem;
+  }
+  .caution {
+    background: #fffbeb;
+    border-left: 3px solid #d97706;
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1.3rem;
+    margin: 1.6rem 0;
+  }
+  .caution .label {
+    display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: #b45309; margin-bottom: 0.15rem;
+  }
+  strong { font-weight: 700; }
+  .lang-switch { text-align: right; font-size: 0.78rem; color: var(--faint); margin-bottom: 0.75rem; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+  .topbar .lang-switch { margin-bottom: 0; }
+  .doc-nav { display: flex; gap: 0.35rem; font-size: 0.78rem; }
+  .doc-nav a, .doc-nav .current { padding: 0.12rem 0.75rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); text-decoration: none; }
+  .doc-nav a:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+  .doc-nav .current { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+  @media print {
+    nav.toc { display: none; }
+    main { max-width: none; padding: 0; }
+    h2 { break-after: avoid; }
+    pre, figure, .tablewrap { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="目次">
+  <div class="toc-title">Contents</div>
+  <a href="#purpose"><span class="no">1</span>目的と前提</a>
+  <a href="#roadmap"><span class="no">2</span>マイルストーン全体像</a>
+  <a href="#m0a"><span class="no">3</span>M0a: pcap リプレイ</a>
+  <a href="#m0b"><span class="no">4</span>M0b: サニタイザ</a>
+  <a href="#m0c"><span class="no">5</span>M0c: 合成生成器</a>
+  <a href="#m1"><span class="no">6</span>M1 以降の接続</a>
+  <a href="#devenv"><span class="no">7</span>開発環境と CI</a>
+  <a href="#agent"><span class="no">8</span>実装エージェントへの指示</a>
+  <a href="#dod"><span class="no">9</span>受け入れ基準まとめ</a>
+</nav>
+<main>
+
+<header class="cover">
+  <div class="topbar">
+    <nav class="doc-nav" aria-label="ドキュメント"><a href="index.html">HLD</a><a href="lld.html">LLD</a><span class="current">Plan</span></nav>
+    <div class="lang-switch">日本語(作業用文書)</div>
+  </div>
+  <div class="kicker">Implementation Plan</div>
+  <h1>sekisho — 実装計画</h1>
+  <p class="subtitle">実装エージェント向けブリーフ。M0(Trap エミュレータ trapgen)から着手し、BER コーデックと公開フィクスチャを先に確立してから M1(受信機)へ進む。</p>
+  <dl class="meta-grid">
+    <div><dt>Status</dt><dd><span class="badge">Draft</span></dd></div>
+    <div><dt>Last Updated</dt><dd>2026-07-26</dd></div>
+    <div><dt>Scope</dt><dd>M0a → M0c(M1 以降は概要のみ)</dd></div>
+    <div><dt>License</dt><dd>Apache-2.0 + DCO</dd></div>
+  </dl>
+</header>
+
+<h2 id="purpose"><span class="no">1</span>目的と前提</h2>
+<p>
+本書は sekisho の実装第 1 フェーズの作業指示書である。設計の正は
+<a href="index.html">HLD</a> と <a href="lld.html">LLD</a> にあり、本書と矛盾した場合は
+HLD / LLD が優先する(矛盾を見つけたら実装を止めて報告すること)。
+</p>
+<p>
+最初に作るのは sekisho 本体ではなく、<strong>Trap エミュレータ <code>trapgen</code></strong> である。
+理由は 3 つある。①実環境(既存監視サーバ)で <code>tcpdump</code> により採取した本物の Trap を
+開発環境で何度でも再生できるようになる。②pcap の解釈と Trap の送出には SNMP の BER
+エンコード/デコードの実装が必要であり、これは M1 受信機の中核(<code>internal/snmpcodec</code>)と
+共通のコードになる — M0 は回り道ではなくコーデックのブートストラップである。③サニタイズ済みの
+キャプチャは公開テストコーパス(LLD §14)になり、以降の全マイルストーンの回帰テスト基盤になる。
+</p>
+<div class="caution">
+<span class="label">機密ルール(厳守)</span>
+実環境で採取した生の pcap には実在の装置 IP・コミュニティ文字列・機器名が含まれる。
+<strong>生 pcap は絶対にコミットしない</strong>。<code>.gitignore</code> に <code>*.pcap</code> を含め、
+<code>tests/fixtures/</code> 配下には M0b のサニタイザを通した成果物(<code>*.fixture.pcap</code> に
+リネームしたもの)だけを置く。ドキュメント・コード・コミットメッセージに装置ベンダの実名を書かない。
+</div>
+
+<h2 id="roadmap"><span class="no">2</span>マイルストーン全体像</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 1</span>マイルストーンと完了条件(DoD)の要約</caption>
+<thead><tr><th>M</th><th>成果物</th><th>完了条件の要点</th></tr></thead>
+<tbody>
+<tr><td><strong>M0a</strong></td><td><code>trapgen replay</code></td><td>pcap 中の Trap を宛先へ再送できる。レート制御 ±5%</td></tr>
+<tr><td><strong>M0b</strong></td><td><code>trapgen sanitize</code> + <code>internal/snmpcodec</code></td><td>実キャプチャを匿名化した共有可能 pcap を出力。BER の往復テスト</td></tr>
+<tr><td><strong>M0c</strong></td><td><code>trapgen gen</code></td><td>シナリオ YAML から合成 Trap 生成。5,000 pps 負荷モード</td></tr>
+<tr><td>M1</td><td>受信機 → MIB 解決 → ClickHouse 格納、unrouted 一覧</td><td>HLD §13 / LLD §10 参照(本書 §6)</td></tr>
+<tr><td>M2〜M5</td><td>状態エンジン / MCP / LLM 提案 / Web UI</td><td>HLD §13 参照。本書の範囲外</td></tr>
+</tbody>
+</table></div>
+<p>
+M0a → M0b → M0c は直列で実装する(M0b が M0a のパケット取り出しを、M0c が M0b のエンコーダを使うため)。
+</p>
+
+<h2 id="m0a"><span class="no">3</span>M0a: pcap リプレイ(<code>trapgen replay</code>)</h2>
+<h3><span class="no">3.1</span>配置とコマンド仕様</h3>
+<figure>
+<pre>sekisho/
+├── cmd/trapgen/main.go        # trapgen バイナリ(sekisho 本体とは別コマンド)
+├── internal/pcapio/           # pcap 読み書き(gopacket/pcapgo。libpcap 非依存)
+└── internal/replay/           # レート制御・送出ループ</pre>
+<figcaption><span class="fig-no">図 1</span>M0a のパッケージ配置</figcaption>
+</figure>
+<figure>
+<pre>trapgen replay --file traps.pcap --target 127.0.0.1:1620 [flags]
+
+  --file      入力 pcap(必須)。UDP/162 宛のパケットだけを対象にする
+  --target    送出先 host:port(必須)
+  --rate N    毎秒 N パケットの固定レート(--timing と排他)
+  --timing original|2x|10x   元のパケット間隔(の 1/2、1/10)で再生
+  --loop      ファイル末尾まで達したら先頭から繰り返す
+  --count N   N パケット送ったら終了(既定: ファイル全量)
+  --dry-run   送出せず、対象パケット数と統計だけ表示</pre>
+<figcaption><span class="fig-no">図 2</span>replay サブコマンドのフラグ仕様</figcaption>
+</figure>
+<h3><span class="no">3.2</span>実装要件</h3>
+<ul>
+<li>pcap の読み取りは <code>github.com/gopacket/gopacket</code> の <code>pcapgo</code> を使う
+(pure Go。cgo・libpcap に依存しないこと。pcapng も <code>pcapgo.NgReader</code> で受ける)</li>
+<li>抽出条件は「UDP かつ宛先ポート 162」。それ以外は黙ってスキップし、<code>--dry-run</code> と
+終了時サマリで件数を報告する(total / matched / sent / errors)</li>
+<li>送出は UDP ペイロード(SNMP メッセージのバイト列)を<strong>無加工のまま</strong>
+<code>net.UDPConn</code> で送る。M0a では BER の解釈はしない</li>
+<li>レート制御は token bucket(<code>--rate</code>)または元タイムスタンプ差の再現(<code>--timing</code>)。
+実効レートの測定値を終了時に表示する</li>
+<li>この時点で <code>.gitignore</code>(<code>*.pcap</code> を含む)、<code>Makefile</code>、CI(§7)も整備する</li>
+</ul>
+<h3><span class="no">3.3</span>テストと DoD</h3>
+<ul>
+<li>テスト用 pcap はテスト内で <code>pcapgo.Writer</code> により合成する(数パケットの UDP/162 +
+非対象パケット混在)。リポジトリにバイナリ fixtures を置くのは M0b 以降</li>
+<li>DoD: ①合成 pcap を localhost の UDP リスナ(テスト内)へ再生し、送出バイト列が元ペイロードと
+一致する。②<code>--rate 100</code> で 1,000 パケットを送り、所要時間が 10 秒 ±5%。③非対象パケットが
+送出されない。④<code>--dry-run</code> がネットワークに何も出さない</li>
+</ul>
+
+<h2 id="m0b"><span class="no">4</span>M0b: サニタイザ(<code>trapgen sanitize</code>)</h2>
+<h3><span class="no">4.1</span>コマンド仕様</h3>
+<figure>
+<pre>trapgen sanitize --in real.pcap --out shareable.fixture.pcap --seed &lt;string&gt; [flags]
+
+  --seed          IP マッピングの決定性の種(必須。同じ種なら同じ写像)
+  --community S   コミュニティ文字列の書き換え先(既定: "public")
+  --scrub-strings varbind の OCTET STRING 値を "scrubbed-&lt;n&gt;" に置換(既定: off)
+  --report        置換の対応表(元 IP → 匿名 IP)を標準エラーへ出力</pre>
+<figcaption><span class="fig-no">図 3</span>sanitize サブコマンドのフラグ仕様</figcaption>
+</figure>
+<h3><span class="no">4.2</span>実装要件</h3>
+<ul>
+<li><strong><code>internal/snmpcodec</code> をここで新設する</strong>。SNMPv1 / v2c メッセージの
+BER デコード・エンコード(メッセージ構造・PDU・varbind リスト・基本型)。外部 SNMP ライブラリに
+依存せず自前実装とする — このパッケージが M1 受信機の中核になるため、依存を持ち込まない</li>
+<li>IP の匿名化: 送信元・宛先 IP と、varbind 内の IpAddress 型・v1 の agent-addr を、
+HMAC(seed, 元IP) に基づいて <code>198.51.100.0/24</code> → 枯渇時 <code>203.0.113.0/24</code>
+(いずれも RFC 5737 ドキュメント用レンジ)へ<strong>一貫写像</strong>する(同じ元 IP は常に同じ匿名 IP)</li>
+<li>コミュニティ文字列は全パケットで置換する。IP/UDP チェックサムは gopacket の再シリアライズで
+再計算する</li>
+<li><strong>変更しないフィールドはバイト単位で保存されること</strong>。デコード → 無変更エンコードの
+往復でバイト列が一致することをテストで保証する(BER の不定長・冗長表現がある場合は正規化して良いが、
+その場合は往復一致の対象を「再エンコード後」に置く)</li>
+</ul>
+<h3><span class="no">4.3</span>テストと DoD</h3>
+<ul>
+<li>DoD: ①合成した「機密入り」pcap を sanitize し、出力に元 IP・元コミュニティが 1 バイトも
+現れない(バイナリ grep で検証)。②同じ seed で 2 回実行した出力が一致する。③sanitize 済み pcap を
+<code>trapgen replay</code> で再生でき、snmpcodec で再デコードできる。④往復(decode → encode)
+一致テストが通る</li>
+<li>この DoD を満たしたら、実環境キャプチャをユーザがローカルで sanitize し、共有可能になったものを
+<code>tests/fixtures/</code> の最初の公開フィクスチャとして追加する(追加判断はユーザが行う)</li>
+</ul>
+
+<h2 id="m0c"><span class="no">5</span>M0c: 合成生成器(<code>trapgen gen</code>)</h2>
+<h3><span class="no">5.1</span>コマンド仕様とシナリオ YAML</h3>
+<figure>
+<pre>trapgen gen --scenario scenario.yaml --target 127.0.0.1:1620 [--pps N] [--duration 5m]
+
+# scenario.yaml
+version: 1
+devices: 50                      # 疑似装置数(device-001 …)
+interfaces_per_device: 48
+snmp: { version: v2c, community: public }   # v1 も指定可
+events:
+  - kind: linkdown_up            # IF-MIB::linkDown → linkUp のペア
+    rate_per_min: 30             # 発生頻度(全装置合計)
+    hold: { min: 10s, max: 5m }  # down から up までの時間(乱数。--seed で決定的)
+  - kind: flap                   # 短周期の down/up 反復
+    devices: 2                   # 対象装置数
+    interval: 20s
+    count: 12
+  - kind: generic_alarm          # パターン B 型(状態 varbind 付き汎用アラーム)
+    trap_oid: 1.3.6.1.4.1.99999.1.1
+    rate_per_min: 10</code></pre>
+<figcaption><span class="fig-no">図 4</span>gen サブコマンドとシナリオ YAML</figcaption>
+</figure>
+<h3><span class="no">5.2</span>実装要件と DoD</h3>
+<ul>
+<li>Trap の組み立ては M0b の <code>snmpcodec</code> エンコーダを使う。sysUpTime・snmpTrapOID を
+先頭 2 varbind に置く正しい v2c Trap を生成する(HLD §1.1.1 の構造)</li>
+<li><code>--seed</code> で全乱数を決定化できること(同じシナリオ + seed = 同じイベント列。
+後の回帰テスト・負荷試験の再現性のため)</li>
+<li><code>--pps N</code> はシナリオの時間軸を無視した負荷モード(イベントを丸めて毎秒 N 発)</li>
+<li>DoD: ①シナリオの linkdown_up が down → up の順で対で生成される。②loopback で
+<code>--pps 5000</code> を 5 分間維持し、送出実測が ±5% 以内(LLD §14 の負荷テストの土台)。
+③生成物を snmpcodec でデコードした golden JSON テストが通る</li>
+</ul>
+
+<h2 id="m1"><span class="no">6</span>M1 以降の接続</h2>
+<p>
+M0 完了時点で、①BER コーデック(<code>internal/snmpcodec</code>)、②再現可能なテスト入力
+(sanitize 済み fixtures + gen シナリオ)、③負荷試験器、の 3 点が揃う。M1(受信機 → MIB 解決 →
+ClickHouse 格納、unrouted 一覧 CLI)は LLD §10 のパイプラインの左半分を <code>snmpcodec</code> の上に
+実装する。M1 の詳細ブリーフは M0 完了後に本書を更新して追記する(現段階では着手しないこと)。
+</p>
+
+<h2 id="devenv"><span class="no">7</span>開発環境と CI</h2>
+<ul>
+<li>Go 1.23 以上。モジュール名は <code>github.com/umadura88/sekisho</code></li>
+<li><code>Makefile</code>: <code>make build</code>(全バイナリ)/ <code>make test</code>(<code>go test -race ./...</code>)/
+<code>make lint</code>(<code>golangci-lint run</code>)</li>
+<li>CI(<code>.github/workflows/ci.yml</code> を新設): push / PR で build・test(-race)・lint を実行。
+既存の <code>pages.yml</code>(<code>site/**</code> のみ発火)には触れない</li>
+<li>依存は最小に保つ。現時点で許可されている外部依存: <code>gopacket</code>(pcap I/O と
+パケット再構成)、YAML パーサ、テストアサーション。<strong>SNMP ライブラリは追加しない</strong>
+(snmpcodec は自前実装。§4.2 の理由)</li>
+</ul>
+
+<h2 id="agent"><span class="no">8</span>実装エージェントへの指示</h2>
+<ol>
+<li>着手前に <a href="index.html">HLD</a> と <a href="lld.html">LLD</a> を通読すること。用語
+(Event / Alarm / device_id / mib_set 等)は両文書の定義に従う</li>
+<li>作業はフィーチャーブランチ(例: <code>m0a-replay</code>)で行い、PR で main に入れる。
+main への直接 push はしない</li>
+<li>コミットは小さく分け、全コミットに DCO の sign-off を付ける(<code>git commit -s</code>)</li>
+<li><code>site/</code> 配下(設計ドキュメント)は変更しない。設計との矛盾や不明点を見つけたら、
+実装で勝手に解決せず PR 説明または issue に書いて止める</li>
+<li>テストを先に書く(特に snmpcodec は往復一致・golden テストが仕様そのもの)。
+<code>make test lint</code> が通らない状態でコミットしない</li>
+<li>§1 の機密ルールを厳守する。生 pcap・実装置の識別子・ベンダ実名をリポジトリに入れない</li>
+<li>各マイルストーンの終わりに、DoD(§9)に対する自己チェック結果を PR 説明に含める</li>
+</ol>
+
+<h2 id="dod"><span class="no">9</span>受け入れ基準まとめ</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 2</span>DoD チェックリスト</caption>
+<thead><tr><th>M</th><th>チェック項目</th></tr></thead>
+<tbody>
+<tr><td>M0a</td><td>UDP/162 抽出の正確性 / 送出バイト列の無加工一致 / レート ±5% / dry-run の無害性 / .gitignore・Makefile・CI 整備</td></tr>
+<tr><td>M0b</td><td>元 IP・コミュニティの完全除去(バイナリ検証)/ seed 決定性 / 往復一致テスト / sanitize 出力の再生・再デコード可能性</td></tr>
+<tr><td>M0c</td><td>正しい v2c/v1 Trap 構造 / seed 決定性 / 5,000 pps × 5 分 ±5% / golden JSON テスト</td></tr>
+</tbody>
+</table></div>
+
+</main>
+</div>
+<script>
+  document.querySelectorAll('nav.toc').forEach(nav => {
+    const title = nav.querySelector('.toc-title');
+    if (title) title.addEventListener('click', () => nav.classList.toggle('open'));
+    nav.querySelectorAll('a').forEach(a =>
+      a.addEventListener('click', () => nav.classList.remove('open')));
+  });
+  document.querySelectorAll('nav.toc').forEach(nav => {
+    const byId = new Map(Array.from(nav.querySelectorAll('a[href^="#"]'))
+      .map(a => [a.getAttribute('href').slice(1), a]));
+    const targets = Array.from(byId.keys()).map(id => document.getElementById(id)).filter(Boolean);
+    let active = null;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (!visible.length) return;
+      if (active) active.classList.remove('active');
+      active = byId.get(visible[0].target.id) || null;
+      if (active) active.classList.add('active');
+    }, { rootMargin: '0px 0px -70% 0px' });
+    targets.forEach(t => observer.observe(t));
+  });
+</script>
+</body>
+</html>
