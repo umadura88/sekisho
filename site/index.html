@@ -198,6 +198,14 @@
   .lang-switch a { color: var(--accent); cursor: pointer; }
   .lang-switch .current { font-weight: 700; color: var(--fg); }
 
+  /* ---- Document nav (HLD / LLD) ---- */
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+  .topbar .lang-switch { margin-bottom: 0; }
+  .doc-nav { display: flex; gap: 0.35rem; font-size: 0.78rem; }
+  .doc-nav a, .doc-nav .current { padding: 0.12rem 0.75rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); text-decoration: none; }
+  .doc-nav a:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+  .doc-nav .current { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
+
   /* ---- Print ---- */
   @media print {
     nav.toc { display: none; }
@@ -242,7 +250,10 @@
 <main>
 
 <header class="cover">
-  <div class="lang-switch"><span class="current">日本語</span> · <a data-setlang="en">English</a></div>
+  <div class="topbar">
+    <nav class="doc-nav" aria-label="ドキュメント"><span class="current">HLD</span><a href="lld.html">LLD</a></nav>
+    <div class="lang-switch"><span class="current">日本語</span> · <a data-setlang="en">English</a></div>
+  </div>
   <div class="kicker">Design Doc</div>
   <h1>sekisho — High Level Design</h1>
   <p class="subtitle">SNMP Trap の受信・解釈・状態管理を中核に据えた、ルーティングテーブル型のネットワーク監視エンジン。</p>
@@ -1113,7 +1124,10 @@ M2(状態エンジン)は装置同定(§5.1 の device_id 解決)を前提とす
 <main>
 
 <header class="cover">
-  <div class="lang-switch"><a data-setlang="ja">日本語</a> · <span class="current">English</span></div>
+  <div class="topbar">
+    <nav class="doc-nav" aria-label="Documents"><span class="current">HLD</span><a href="lld.html">LLD</a></nav>
+    <div class="lang-switch"><a data-setlang="ja">日本語</a> · <span class="current">English</span></div>
+  </div>
   <div class="kicker">Design Doc</div>
   <h1>sekisho — High Level Design</h1>
   <p class="subtitle">A routing-table-driven network monitoring engine built around receiving, interpreting, and stateful management of SNMP traps.</p>

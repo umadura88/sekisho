@@ -151,6 +151,14 @@
   .lang-switch { text-align: right; font-size: 0.78rem; color: var(--faint); margin-bottom: 0.75rem; }
   .lang-switch a { color: var(--accent); cursor: pointer; }
   .lang-switch .current { font-weight: 700; color: var(--fg); }
+
+  /* ---- Document nav (HLD / LLD) ---- */
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+  .topbar .lang-switch { margin-bottom: 0; }
+  .doc-nav { display: flex; gap: 0.35rem; font-size: 0.78rem; }
+  .doc-nav a, .doc-nav .current { padding: 0.12rem 0.75rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); text-decoration: none; }
+  .doc-nav a:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
+  .doc-nav .current { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
   @media print {
     nav.toc { display: none; }
     main { max-width: none; padding: 0; }
@@ -186,7 +194,10 @@
 <main>
 
 <header class="cover">
-  <div class="lang-switch"><a href="index.html">← HLD</a> · <span class="current">日本語</span> · <a data-setlang="en">English</a></div>
+  <div class="topbar">
+    <nav class="doc-nav" aria-label="ドキュメント"><a href="index.html">HLD</a><span class="current">LLD</span></nav>
+    <div class="lang-switch"><span class="current">日本語</span> · <a data-setlang="en">English</a></div>
+  </div>
   <div class="kicker">Design Doc</div>
   <h1>sekisho — Low Level Design</h1>
   <p class="subtitle">HLD で確定した設計の実装仕様。DSL スキーマ・状態機械・DB スキーマ・API・パイプライン構成を定義する。</p>
@@ -661,7 +672,10 @@ golden JSON(期待される分解済みイベント・Alarm 遷移列)を対で�
 <main>
 
 <header class="cover">
-  <div class="lang-switch"><a href="index.html">← HLD</a> · <a data-setlang="ja">日本語</a> · <span class="current">English</span></div>
+  <div class="topbar">
+    <nav class="doc-nav" aria-label="Documents"><a href="index.html">HLD</a><span class="current">LLD</span></nav>
+    <div class="lang-switch"><a data-setlang="ja">日本語</a> · <span class="current">English</span></div>
+  </div>
   <div class="kicker">Design Doc</div>
   <h1>sekisho — Low Level Design</h1>
   <p class="subtitle">Implementation specification of the architecture fixed in the HLD: DSL schema, state machine, database schemas, API, and pipeline structure.</p>
