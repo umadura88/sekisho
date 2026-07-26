@@ -64,8 +64,19 @@
   @media (max-width: 900px) {
     .layout { flex-direction: column; }
     html[lang="ja"] #layout-ja, html[lang="en"] #layout-en { display: flex; }
-    nav.toc { position: static; width: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--border); padding: 1.5rem 1.25rem; }
+    nav.toc { position: static; width: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--border); padding: 1rem 1.25rem; }
+    nav.toc .toc-title { cursor: pointer; margin-bottom: 0; user-select: none; }
+    nav.toc .toc-title::after { content: " ▸"; }
+    nav.toc.open .toc-title { margin-bottom: 0.9rem; }
+    nav.toc.open .toc-title::after { content: " ▾"; }
+    nav.toc:not(.open) a { display: none; }
     main { padding: 1.5rem 1.25rem 5rem; }
+    header.cover h1 { font-size: 1.7rem; }
+    header.cover .subtitle { font-size: 0.95rem; }
+  }
+  @media (max-width: 700px) {
+    figure { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    figure svg { min-width: 640px; }
   }
 
   /* ---- Document header ---- */
@@ -118,7 +129,7 @@
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     font-size: 0.85em;
   }
-  code { background: var(--code-bg); border: 1px solid var(--border); padding: 0.1em 0.4em; border-radius: 4px; }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 0.1em 0.4em; border-radius: 4px; overflow-wrap: anywhere; }
   pre {
     background: var(--code-bg);
     border: 1px solid var(--border);
@@ -1994,6 +2005,14 @@ convention and load spec (only standard MIBs ship in the repository)</li>
                : ['ja', 'en'].includes(saved) ? saved : 'ja';
     setLang(lang);
   })();
+
+  // ---- Mobile TOC toggle ----
+  document.querySelectorAll('nav.toc').forEach(nav => {
+    const title = nav.querySelector('.toc-title');
+    if (title) title.addEventListener('click', () => nav.classList.toggle('open'));
+    nav.querySelectorAll('a').forEach(a =>
+      a.addEventListener('click', () => nav.classList.remove('open')));
+  });
 
   // ---- TOC scroll spy (per language block) ----
   document.querySelectorAll('nav.toc').forEach(nav => {

@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sekisho — Low Level Design</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1f24;
+    --muted: #6b7280;
+    --faint: #9aa1a9;
+    --accent: #1d4ed8;
+    --accent-soft: #eef2ff;
+    --border: #e5e7eb;
+    --border-strong: #d3d7dc;
+    --code-bg: #f8f9fb;
+    --head-rule: #1a1f24;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.8;
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout { display: none; max-width: 1240px; margin: 0 auto; }
+  html[lang="ja"] #layout-ja { display: flex; }
+  html[lang="en"] #layout-en { display: flex; }
+  nav.toc {
+    position: sticky; top: 0; align-self: flex-start;
+    width: 256px; flex-shrink: 0;
+    max-height: 100vh; overflow-y: auto;
+    padding: 3rem 1.25rem 3rem 2rem;
+    font-size: 0.8rem;
+    border-right: 1px solid var(--border);
+  }
+  nav.toc .toc-title {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    color: var(--faint); text-transform: uppercase; margin-bottom: 0.9rem;
+  }
+  nav.toc a {
+    display: flex; gap: 0.5em;
+    color: var(--muted); text-decoration: none;
+    padding: 0.22rem 0.6rem; margin-left: -0.6rem;
+    border-radius: 5px; line-height: 1.5;
+  }
+  nav.toc a .no { color: var(--faint); font-variant-numeric: tabular-nums; flex-shrink: 0; width: 2em; }
+  nav.toc a:hover { color: var(--fg); background: #f3f4f6; }
+  nav.toc a.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  nav.toc a.active .no { color: var(--accent); }
+  main { flex: 1; min-width: 0; max-width: 800px; padding: 3rem 3rem 8rem; }
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; }
+    html[lang="ja"] #layout-ja, html[lang="en"] #layout-en { display: flex; }
+    nav.toc { position: static; width: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--border); padding: 1rem 1.25rem; }
+    nav.toc .toc-title { cursor: pointer; margin-bottom: 0; user-select: none; }
+    nav.toc .toc-title::after { content: " ▸"; }
+    nav.toc.open .toc-title { margin-bottom: 0.9rem; }
+    nav.toc.open .toc-title::after { content: " ▾"; }
+    nav.toc:not(.open) a { display: none; }
+    main { padding: 1.5rem 1.25rem 5rem; }
+    header.cover h1 { font-size: 1.7rem; }
+    header.cover .subtitle { font-size: 0.95rem; }
+  }
+  @media (max-width: 700px) {
+    figure { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    figure svg { min-width: 640px; }
+  }
+  header.cover { margin-bottom: 3.5rem; }
+  header.cover .kicker {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.75rem;
+  }
+  header.cover h1 {
+    font-size: 2.3rem; line-height: 1.25; margin: 0 0 0.75rem;
+    letter-spacing: -0.015em; border: none; padding: 0;
+  }
+  header.cover .subtitle { color: var(--muted); margin: 0 0 1.75rem; font-size: 1.02rem; }
+  .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    border-top: 2px solid var(--head-rule); border-bottom: 1px solid var(--border);
+    padding: 0.9rem 0; gap: 0.25rem 1.5rem;
+  }
+  .meta-grid div { font-size: 0.85rem; }
+  .meta-grid dt { color: var(--faint); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 0; }
+  .meta-grid dd { margin: 0.1rem 0 0; font-weight: 500; }
+  .badge {
+    display: inline-block; font-size: 0.72rem; font-weight: 700;
+    color: #92400e; background: #fef3c7; border-radius: 999px;
+    padding: 0.05rem 0.6rem; vertical-align: 1px;
+  }
+  h2 {
+    font-size: 1.45rem; line-height: 1.4; letter-spacing: -0.01em;
+    margin: 4rem 0 1.1rem; padding-top: 1.6rem;
+    border-top: 2px solid var(--head-rule);
+    scroll-margin-top: 1.25rem;
+  }
+  h3 { font-size: 1.05rem; margin: 2.4rem 0 0.7rem; scroll-margin-top: 1.25rem; }
+  h2 .no, h3 .no { color: var(--accent); margin-right: 0.5em; font-variant-numeric: tabular-nums; }
+  a { color: var(--accent); text-decoration: none; }
+  main a:hover { text-decoration: underline; }
+  ul, ol { padding-left: 1.4em; }
+  li { margin: 0.3em 0; }
+  li::marker { color: var(--faint); }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  code { background: var(--code-bg); border: 1px solid var(--border); padding: 0.1em 0.4em; border-radius: 4px; overflow-wrap: anywhere; }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.1rem 1.35rem;
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+  pre code { background: none; border: none; padding: 0; }
+  figure { margin: 1.75rem 0; }
+  figure pre { margin: 0; }
+  figcaption { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 0.6rem; }
+  figcaption .fig-no { font-weight: 700; color: var(--fg); margin-right: 0.5em; }
+  .tablewrap { overflow-x: auto; margin: 1.4rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; line-height: 1.65; }
+  caption { caption-side: top; text-align: left; color: var(--muted); font-size: 0.8rem; padding-bottom: 0.5rem; }
+  caption .tbl-no { font-weight: 700; color: var(--fg); margin-right: 0.5em; }
+  th {
+    text-align: left; font-weight: 700; font-size: 0.82rem;
+    border-bottom: 2px solid var(--head-rule);
+    padding: 0.45rem 0.8rem; white-space: nowrap;
+  }
+  td { border-bottom: 1px solid var(--border); padding: 0.55rem 0.8rem; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 1px solid var(--border-strong); }
+  .principle {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1.3rem;
+    margin: 1.6rem 0;
+  }
+  .principle .label {
+    display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 0.15rem;
+  }
+  strong { font-weight: 700; }
+  .lang-switch { text-align: right; font-size: 0.78rem; color: var(--faint); margin-bottom: 0.75rem; }
+  .lang-switch a { color: var(--accent); cursor: pointer; }
+  .lang-switch .current { font-weight: 700; color: var(--fg); }
+  @media print {
+    nav.toc { display: none; }
+    main { max-width: none; padding: 0; }
+    h2 { break-after: avoid; }
+    pre, figure, .tablewrap { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================================================================= -->
+<!-- 日本語版 / Japanese edition                                              -->
+<!-- ======================================================================= -->
+<div class="layout" id="layout-ja">
+<nav class="toc" aria-label="目次">
+  <div class="toc-title">Contents</div>
+  <a href="#position"><span class="no">1</span>本書の位置づけ</a>
+  <a href="#repos"><span class="no">2</span>リポジトリ構成</a>
+  <a href="#dsl"><span class="no">3</span>ルーティング DSL 正式仕様</a>
+  <a href="#engine"><span class="no">4</span>状態エンジン仕様</a>
+  <a href="#db"><span class="no">5</span>データベーススキーマ</a>
+  <a href="#stream"><span class="no">6</span>alarm.* ストリーム詳細</a>
+  <a href="#api"><span class="no">7</span>REST API 仕様</a>
+  <a href="#mcp"><span class="no">8</span>MCP ツール定義</a>
+  <a href="#mib"><span class="no">9</span>MIB 配置規約とロード仕様</a>
+  <a href="#pipeline"><span class="no">10</span>受信パイプライン実装</a>
+  <a href="#config"><span class="no">11</span>設定ファイル</a>
+  <a href="#cli"><span class="no">12</span>CLI コマンド体系</a>
+  <a href="#backtest"><span class="no">13</span>バックテスト実装</a>
+  <a href="#testing"><span class="no">14</span>テスト戦略</a>
+  <a href="#open"><span class="no">15</span>未決事項</a>
+</nav>
+<main>
+
+<header class="cover">
+  <div class="lang-switch"><a href="index.html">← HLD</a> · <span class="current">日本語</span> · <a data-setlang="en">English</a></div>
+  <div class="kicker">Design Doc</div>
+  <h1>sekisho — Low Level Design</h1>
+  <p class="subtitle">HLD で確定した設計の実装仕様。DSL スキーマ・状態機械・DB スキーマ・API・パイプライン構成を定義する。</p>
+  <dl class="meta-grid">
+    <div><dt>Status</dt><dd><span class="badge">Draft</span></dd></div>
+    <div><dt>Codename</dt><dd>sekisho(関所)</dd></div>
+    <div><dt>Last Updated</dt><dd>2026-07-26</dd></div>
+    <div><dt>License</dt><dd>Apache-2.0 + DCO</dd></div>
+  </dl>
+</header>
+
+<h2 id="position"><span class="no">1</span>本書の位置づけ</h2>
+<p>
+本書は <a href="index.html">HLD</a> で確定したアーキテクチャの実装仕様である。HLD が LLD 送りとした
+未決事項 — ルーティング DSL の正式スキーマ、alarm.* ストリームのスキーマ詳細、順序逆転の猶予窓、
+保持期間の終端、MIB の配置規約、公開契約の詳細 — をここで確定する。本書内で「提案」と明記した数値は
+実装初期のデフォルトであり、実測に基づいて変更してよい(変更は設定で吸収する)。
+</p>
+
+<h2 id="repos"><span class="no">2</span>リポジトリ構成</h2>
+<h3><span class="no">2.1</span>sekisho 本体(このリポジトリ)</h3>
+<figure>
+<pre>sekisho/
+├── cmd/sekisho/            # エントリポイント(単一バイナリ)
+├── internal/
+│   ├── receiver/           # UDP listener・forward 受信・v1→v2 正規化
+│   ├── mib/                # MIB コンパイラ・シンボル解決・mib_set 算出
+│   ├── router/             # ルーティングテーブル(longest-prefix + where)
+│   ├── engine/             # 状態エンジン(Alarm 状態機械・flap・expire)
+│   ├── store/
+│   │   ├── ch/             # ClickHouse クライアント・バッチ挿入・スプール
+│   │   └── pg/             # PostgreSQL・トランザクション・outbox
+│   ├── outbox/             # alarm.* 配送(webhook / script sink)
+│   ├── api/                # REST API(認可・監査を含む)
+│   ├── mcp/                # MCP サーバ(API の薄いラッパー)
+│   ├── llm/                # LLM プロバイダ抽象(Bedrock / OpenAI 互換)
+│   └── backtest/           # リプレイ実行器
+├── web/                    # React SPA(ビルド成果物を go:embed)
+├── mibs/std/               # 同梱する標準 MIB のみ(§9)
+├── site/                   # 設計ドキュメント(GitHub Pages)
+├── LICENSE / DCO
+└── .github/workflows/</pre>
+<figcaption><span class="fig-no">図 1</span>本体リポジトリのレイアウト</figcaption>
+</figure>
+<h3><span class="no">2.2</span>ルールリポジトリ(<code>sekisho rules init</code> が生成)</h3>
+<figure>
+<pre>my-rules/
+├── routes.yaml             # ルーティングテーブル(評価順で 1 ファイル)
+├── rules/
+│   ├── if-linkdown.yaml    # stateful ルール(1 ファイル 1 ルール)
+│   └── ...
+├── mibs/                   # ユーザ持ち込みの private MIB(§9)
+├── tests/
+│   └── fixtures/           # golden イベント(CI の回帰テスト入力)
+└── .github/workflows/
+    └── rules-ci.yml        # lint + backtest + PR コメント投稿</pre>
+<figcaption><span class="fig-no">図 2</span>ルールリポジトリのレイアウト</figcaption>
+</figure>
+
+<h2 id="dsl"><span class="no">3</span>ルーティング DSL 正式仕様</h2>
+<h3><span class="no">3.1</span>routes.yaml</h3>
+<figure>
+<pre><code>version: 1
+routes:
+  - match: { trap_oid: "1.3.6.1.6.3.1.1.5.3" }        # 完全一致
+    action: { stateful: if-linkdown }
+  - match:
+      trap_oid: "1.3.6.1.4.1.9999.2.*"                 # prefix 一致(末尾 .* のみ)
+      where: { alarmSeverity: info }
+    action: drop
+  - default:
+      - drop: { trap_oid: "1.3.6.1.4.1.9999.9.*" }
+      - else: { bucket: unrouted }</code></pre>
+<figcaption><span class="fig-no">図 3</span>routes.yaml の正式形</figcaption>
+</figure>
+<ul>
+<li><code>trap_oid</code> のパターンは<strong>完全一致</strong>か<strong>末尾 <code>.*</code> の prefix 一致</strong>のみ。
+正規表現・中間ワイルドカードは意図的に許可しない(全順序の単純さを守る)。<code>IF-MIB::linkDown</code> の
+形式のシンボル表記も受け付け、ロード時に数値 OID へ解決する</li>
+<li><code>where</code> は varbind 名(または生 OID)→ 条件のマップ。条件は「値」「値のリスト(OR)」
+「<code>{ gte: N }</code> / <code>{ lte: N }</code>(数値型のみ)」の 3 形式。列挙はラベルで書き、
+ロード時に型付き値へコンパイルする</li>
+<li><code>action</code> は <code>stateful: &lt;rule名&gt;</code> / <code>drop</code> / <code>bucket: unrouted</code> の 3 種。
+<code>default</code> ブロックはネスト 1 段のみ許す</li>
+</ul>
+<h3><span class="no">3.2</span>rule ファイル</h3>
+<figure>
+<pre><code>rule: if-linkdown
+match:
+  trap: IF-MIB::linkDown
+  where: {}                          # 任意。routes 側の where と AND
+key: "{source}:{ifIndex}"
+transition:
+  raise: { severity: major }
+  clear: { trap: IF-MIB::linkUp, same_key: true }
+  # パターン B の場合は raise ではなく raise_when / clear_when を使う:
+  # raise_when: { where: { alarmStatus: [critical, major, minor] },
+  #               severity_from: alarmStatus }
+  # clear_when: { where: { alarmStatus: cleared } }
+flap: { window: 5m, count: 5, calm: 15m }   # 任意
+expire_after: 7d                              # 任意
+grace: 2s                                     # 任意(順序逆転の猶予窓。既定 2s)</code></pre>
+<figcaption><span class="fig-no">図 4</span>rule ファイルの正式形(全フィールド)</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 1</span>rule フィールド定義</caption>
+<thead><tr><th>フィールド</th><th>型</th><th>必須</th><th>意味</th></tr></thead>
+<tbody>
+<tr><td><code>rule</code></td><td>string(kebab-case)</td><td>必須</td><td>ルール ID。リポジトリ内で一意</td></tr>
+<tr><td><code>match.trap</code></td><td>OID / シンボル</td><td>必須</td><td>raise 側の Trap 種別</td></tr>
+<tr><td><code>key</code></td><td>テンプレート</td><td>必須</td><td>状態キー。<code>{source}</code> = 解決済み device_id、<code>{&lt;varbind名&gt;}</code> = 値、<code>{instance_of(&lt;名&gt;)}</code> = 添字</td></tr>
+<tr><td><code>transition.raise / clear</code></td><td>object</td><td>A 型で必須</td><td>種別ペア型。<code>clear.same_key: true</code> 固定</td></tr>
+<tr><td><code>transition.raise_when / clear_when</code></td><td>object</td><td>B 型で必須</td><td>状態 varbind 型。<code>severity_from</code> は varbind 名 → severity 写像</td></tr>
+<tr><td><code>flap</code></td><td>object</td><td>任意</td><td><code>window</code> 内に <code>count</code> 回遷移で flapping、<code>calm</code> 無遷移で解除</td></tr>
+<tr><td><code>expire_after</code></td><td>duration</td><td>任意</td><td>超過で reason=expired の自動 clear</td></tr>
+<tr><td><code>grace</code></td><td>duration</td><td>任意</td><td>順序逆転の猶予窓。既定 2s(§4.2)</td></tr>
+</tbody>
+</table></div>
+<p>severity の列挙は <code>critical / major / minor / warning / info</code> の 5 段とする(X.733 準拠。cleared は severity ではなく状態遷移)。</p>
+<h3><span class="no">3.3</span>ロード時検証</h3>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 2</span>検証コードと挙動</caption>
+<thead><tr><th>コード</th><th>条件</th><th>挙動</th></tr></thead>
+<tbody>
+<tr><td>E001</td><td>同一 prefix・同一 where のルートが重複</td><td>ロード失敗(エラー)</td></tr>
+<tr><td>E002</td><td>rule ID の重複 / routes から参照する rule が不存在</td><td>ロード失敗</td></tr>
+<tr><td>E003</td><td>YAML スキーマ違反(未知フィールド含む)</td><td>ロード失敗</td></tr>
+<tr><td>W101</td><td>MIB で解決できないシンボル参照</td><td>当該ルールを警告付き無効化(他は生きる)</td></tr>
+<tr><td>W102</td><td>key が参照する varbind が NOTIFICATION-TYPE の OBJECTS に無い</td><td>警告(実 Trap には載る場合があるため無効化しない)</td></tr>
+</tbody>
+</table></div>
+<p>
+評価は「prefix 長 → routes.yaml 内の定義順」の全順序で行い、<code>trap_oid</code> と <code>where</code> の
+両方が成立した最初のルートを採用する。この検証・評価は <code>sekisho rules lint</code> が CI で実行するものと
+同一実装である。
+</p>
+
+<h2 id="engine"><span class="no">4</span>状態エンジン仕様</h2>
+<h3><span class="no">4.1</span>Alarm 状態機械</h3>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 3</span>状態遷移表(行 = 現在状態、列 = 入力)</caption>
+<thead><tr><th>状態 \ 入力</th><th>raise イベント</th><th>clear イベント</th><th>expire</th><th>手動 clear</th><th>flap 閾値超過</th><th>calm 経過</th></tr></thead>
+<tbody>
+<tr><td><strong>(なし)</strong></td><td>raised を生成 / <code>alarm.raised</code></td><td>記録のみ(遷移なし)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td><strong>raised</strong></td><td>count++、遷移なし</td><td>cleared / <code>alarm.cleared(trap)</code></td><td>cleared / <code>alarm.cleared(expired)</code></td><td>cleared / <code>alarm.cleared(manual)</code></td><td>flapping フラグ ON / <code>alarm.flapping</code></td><td>—</td></tr>
+<tr><td><strong>raised + flapping</strong></td><td>count++、遷移は記録</td><td>内部状態は追従、フラグ維持</td><td>同上</td><td>同上</td><td>—</td><td>フラグ OFF / <code>alarm.updated</code></td></tr>
+</tbody>
+</table></div>
+<ul>
+<li>cleared は終端状態。同一キーの次の raise は<strong>新しい alarm_id</strong> を生成する(再発は別 Alarm。
+関連づけは key で追える)</li>
+<li>severity の変化(パターン B の <code>severity_from</code>)は raised のまま <code>alarm.updated</code> を発火する</li>
+</ul>
+<h3><span class="no">4.2</span>順序逆転の猶予窓(grace)</h3>
+<p>
+処理は device_id ハッシュでシャーディングされたワーカー(§10)がキー単位に直列実行する。各キーは
+直近イベントを <code>grace</code>(既定 2 秒、rule で上書き可)だけ保留し、保留中に received_at が
+より古いイベントが届いた場合は received_at 順に並べ替えてから状態機械に投入する。grace を過ぎた
+遅延イベントは「遅延到着」として Event 層に記録し、状態遷移には使わない(バックテストでは正順で
+評価されるため、ライブとリプレイの差はこの窓の内側に限定される)。
+</p>
+<h3><span class="no">4.3</span>expire スケジューラ</h3>
+<p>
+<code>expire_after</code> を持つ Alarm は raise 時に <code>expires_at</code> を書き込む。スケジューラは
+60 秒周期で <code>expires_at &lt;= now()</code> を走査し(部分インデックス、§5.1)、reason=expired の
+clear 遷移を通常の遷移と同じ経路(outbox 含む)で実行する。
+</p>
+
+<h2 id="db"><span class="no">5</span>データベーススキーマ</h2>
+<h3><span class="no">5.1</span>PostgreSQL</h3>
+<figure>
+<pre><code>CREATE TABLE alarms (
+  alarm_id     UUID PRIMARY KEY,
+  key          TEXT NOT NULL,
+  device_id    TEXT NOT NULL,
+  rule         TEXT NOT NULL,
+  route_id     TEXT NOT NULL,
+  severity     TEXT NOT NULL,
+  status       TEXT NOT NULL,              -- raised / cleared
+  flapping     BOOLEAN NOT NULL DEFAULT FALSE,
+  count        INTEGER NOT NULL DEFAULT 1,
+  seq          BIGINT  NOT NULL DEFAULT 0, -- alarm.* のシーケンス番号
+  raised_at    TIMESTAMPTZ NOT NULL,
+  cleared_at   TIMESTAMPTZ,
+  clear_reason TEXT,                       -- trap / manual / expired
+  expires_at   TIMESTAMPTZ,
+  acked_by     TEXT,
+  acked_at     TIMESTAMPTZ,
+  raise_event  UUID NOT NULL,              -- lineage: ingress event_id
+  clear_event  UUID
+);
+CREATE UNIQUE INDEX alarms_active_key ON alarms (key) WHERE status = 'raised';
+CREATE INDEX alarms_expiry ON alarms (expires_at) WHERE status = 'raised' AND expires_at IS NOT NULL;
+
+CREATE TABLE outbox (
+  id           BIGSERIAL PRIMARY KEY,
+  alarm_id     UUID NOT NULL,
+  seq          BIGINT NOT NULL,
+  kind         TEXT NOT NULL,              -- alarm.raised / updated / ...
+  payload      JSONB NOT NULL,             -- §6 の envelope 全体
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  delivered_at TIMESTAMPTZ,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (alarm_id, seq)
+);
+
+CREATE TABLE rule_drafts (                 -- LLM 提案のドラフト(§8)
+  draft_id     UUID PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL,
+  author       TEXT NOT NULL,              -- mcp:&lt;client&gt; / user:&lt;name&gt;
+  target_trap  TEXT NOT NULL,
+  yaml         TEXT NOT NULL,
+  backtest     JSONB,                      -- 直近のバックテスト結果
+  status       TEXT NOT NULL               -- draft / pr_opened / merged / discarded
+);</code></pre>
+<figcaption><span class="fig-no">図 5</span>PostgreSQL DDL(主要テーブル)</figcaption>
+</figure>
+<p>
+Alarm 遷移と outbox 挿入は<strong>同一トランザクション</strong>で行う(HLD §6 の transactional outbox)。
+<code>alarms_active_key</code> の部分ユニーク制約が「同一キーに raised は高々 1 つ」をデータベースレベルで保証する。
+</p>
+<h3><span class="no">5.2</span>ClickHouse</h3>
+<p>
+<code>ingress_events</code> は HLD 図 12 のとおり。加えて 2 つの Materialized View を持つ。
+</p>
+<figure>
+<pre><code>-- ルートカウンタ(HLD 図 9 の描画のソース)
+CREATE MATERIALIZED VIEW route_counters
+ENGINE = SummingMergeTree ORDER BY (route_id, day)
+AS SELECT route_id, toDate(received_at) AS day, count() AS hits,
+          max(received_at) AS last_seen
+   FROM ingress_events GROUP BY route_id, day;
+
+-- unrouted 頻度(list_unmatched_traps のソース)
+CREATE MATERIALIZED VIEW unrouted_summary
+ENGINE = SummingMergeTree ORDER BY (trap_oid, day)
+AS SELECT trap_oid, toDate(received_at) AS day, count() AS hits,
+          max(received_at) AS last_seen
+   FROM ingress_events WHERE route_id = '' GROUP BY trap_oid, day;</code></pre>
+<figcaption><span class="fig-no">図 6</span>Materialized View 定義</figcaption>
+</figure>
+<p>
+<strong>保持期間(提案)</strong>: ホット層(ローカルディスク)90 日 → S3 層へ移動、総保持 390 日(13 ヶ月。
+年次比較 + 余裕)。バックテストの対象は<strong>全階層</strong>とし、S3 層に及ぶ場合は速度低下を許容する
+(進捗を API で返す)。
+</p>
+
+<h2 id="stream"><span class="no">6</span>alarm.* ストリーム詳細</h2>
+<figure>
+<pre><code>{
+  "schema": "sekisho.alarm/v1",
+  "kind": "alarm.raised",
+  "alarm_id": "0197fa3e-...-8c21",
+  "seq": 1,
+  "occurred_at": "2026-07-26T10:03:21.412Z",
+  "device_id": "tokyo-core-01",
+  "key": "tokyo-core-01:1000",
+  "severity": "major",
+  "rule": "if-linkdown",
+  "route_id": "r-000042",
+  "reason": null,                    // cleared のみ: trap / manual / expired
+  "flapping": false,
+  "count": 1,
+  "lineage": { "event_id": "0197fa3e-...-77b0" },
+  "annotations": { "acked_by": null }
+}</code></pre>
+<figcaption><span class="fig-no">図 7</span>envelope の実例(alarm.raised)</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 4</span>配送仕様</caption>
+<thead><tr><th>項目</th><th>仕様</th></tr></thead>
+<tbody>
+<tr><td>順序</td><td>alarm_id 単位で直列。購読者は (alarm_id, seq) で重複排除</td></tr>
+<tr><td>リトライ</td><td>1s → 5s → 30s → 2m → 10m → 以降 1h 間隔。24h 滞留で当該 sink を degraded 状態にし、メトリクスとログで警告(配送は継続試行)</td></tr>
+<tr><td>Webhook</td><td>HTTP POST、ヘッダ <code>X-Sekisho-Signature: sha256=&lt;HMAC&gt;</code>(共有鍵は設定)。2xx = 成功</td></tr>
+<tr><td>script sink</td><td>envelope JSON を標準入力に渡して起動。exit 0 = 成功、非 0 = リトライ。タイムアウト 30s(超過は失敗扱い)。並列度は sink ごとに 1(順序保証のため)</td></tr>
+<tr><td>復旧</td><td>長期滞留後は <code>GET /api/v1/alarms</code> での全量リコンサイルを推奨(HLD §7)</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="api"><span class="no">7</span>REST API 仕様</h2>
+<p>
+ベースパスは <code>/api/v1</code>。認証は Bearer トークン(設定で静的トークンを定義。OIDC 連携は §15)。
+ロールは <code>viewer</code>(読み取り)/ <code>operator</code>(ack・手動 clear・バックテスト)/
+<code>admin</code>(設定・トークン管理)の 3 段。すべての書き込み操作は監査ログに記録される。
+</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 5</span>エンドポイント一覧</caption>
+<thead><tr><th>Method / Path</th><th>説明</th><th>ロール</th></tr></thead>
+<tbody>
+<tr><td><code>GET /alarms</code></td><td>Active Alarm List。<code>status / device / severity / rule / since</code> で絞り込み</td><td>viewer</td></tr>
+<tr><td><code>GET /alarms/{id}</code></td><td>個別 Alarm(lineage の event_id 列を含む)</td><td>viewer</td></tr>
+<tr><td><code>POST /alarms/{id}/ack</code></td><td>ack(注記のみ、遷移なし)</td><td>operator</td></tr>
+<tr><td><code>POST /alarms/{id}/clear</code></td><td>手動 clear。body に <code>reason_note</code> 必須</td><td>operator</td></tr>
+<tr><td><code>GET /routes</code></td><td>ルートテーブル + カウンタ(HLD 図 9 の描画ソース)</td><td>viewer</td></tr>
+<tr><td><code>GET /events</code></td><td>イベント検索。<code>device / trap_oid / route / action / from / to</code>、ページング</td><td>viewer</td></tr>
+<tr><td><code>GET /events/{event_id}</code></td><td>個別イベント(分解済み varbind と raw_pdu)</td><td>viewer</td></tr>
+<tr><td><code>GET /unmatched</code></td><td>unrouted の頻度順一覧(<code>unrouted_summary</code>)</td><td>viewer</td></tr>
+<tr><td><code>POST /backtest</code></td><td>body = ルール YAML + 期間。202 で受け付け、<code>GET /backtest/{job}</code> で進捗・結果</td><td>operator</td></tr>
+<tr><td><code>GET /mib/{oid}</code></td><td>OID のシンボル・型・列挙・NOTIFICATION-TYPE 定義</td><td>viewer</td></tr>
+<tr><td><code>GET /healthz</code> / <code>GET /metrics</code></td><td>ヘルスチェック / Prometheus メトリクス(認証なし、bind は設定)</td><td>—</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="mcp"><span class="no">8</span>MCP ツール定義</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 6</span>MCP ツール → API 対応</caption>
+<thead><tr><th>ツール</th><th>対応 API</th><th>権限</th><th>備考</th></tr></thead>
+<tbody>
+<tr><td><code>list_unmatched_traps</code></td><td><code>GET /unmatched</code></td><td>read</td><td></td></tr>
+<tr><td><code>sample_trap_events</code></td><td><code>GET /events</code></td><td>read</td><td>件数上限 100</td></tr>
+<tr><td><code>get_mib_info</code></td><td><code>GET /mib/{oid}</code></td><td>read</td><td></td></tr>
+<tr><td><code>list_routes</code> / <code>show_route</code></td><td><code>GET /routes</code></td><td>read</td><td></td></tr>
+<tr><td><code>list_alarms</code> / <code>get_alarm</code></td><td><code>GET /alarms*</code></td><td>read</td><td></td></tr>
+<tr><td><code>backtest_rule</code></td><td><code>POST /backtest</code></td><td>read</td><td>読み取り専用処理のため read 扱い</td></tr>
+<tr><td><code>propose_rule</code></td><td>内部(LLM + <code>rule_drafts</code>)</td><td>write</td><td>ドラフト生成まで。装置 ID はマスキング設定に従う</td></tr>
+<tr><td><code>apply_rule</code></td><td>ルールリポジトリへの PR 作成</td><td>write</td><td>直接適用は構造的に不可能(HLD §11)</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="mib"><span class="no">9</span>MIB 配置規約とロード仕様</h2>
+<ul>
+<li><strong>同梱(<code>mibs/std/</code>)</strong>: SNMPv2-SMI / SNMPv2-TC / SNMPv2-MIB / IF-MIB /
+SNMP-COMMUNITY-MIB(<code>snmpTrapAddress</code> 用)等、IETF 由来の標準 MIB のみ。private MIB は
+再配布不可のため同梱しない</li>
+<li><strong>ユーザ持ち込み</strong>: ルールリポジトリの <code>mibs/</code>(推奨)またはローカルの
+<code>mib_paths</code> 設定ディレクトリ。ロード順は std → ユーザの順で、同名モジュールはユーザ側が勝つ</li>
+<li><strong><code>mib_set</code></strong>: ロードした全モジュールの正規化ハッシュ(SHA-256 先頭 12 桁)。
+Event に刻印され(HLD 図 12)、バックテストの決定性の基準になる。過去の mib_set は
+<code>mib_snapshots</code> ディレクトリに保存し、リプレイ時に参照する</li>
+<li><strong>未解決の扱い</strong>: 解決できない OID は生のまま通す(HLD §5.1 の縮退動作)。未解決率は
+メトリクスで公開する</li>
+</ul>
+
+<h2 id="pipeline"><span class="no">10</span>受信パイプライン実装</h2>
+<figure>
+<pre>UDP listener (SO_RCVBUF 8MB)
+   │  frames
+   ▼
+[bounded channel  cap 65,536]  ── 満杯時: drop + self counter
+   ▼
+decoder pool (goroutine × CPU コア数)     … BER デコード・v1→v2 正規化・MIB 解決
+   ▼
+router                                     … §3 の評価(読み取り専有、ロックなし)
+   ├──▶ CH batcher   … flush = 1 秒ごと or 10,000 行(先勝ち)。失敗時はディスクスプールへ
+   └──▶ shard workers × 64(device_id の FNV ハッシュ)
+             │   キー単位に直列・grace 保留(§4.2)
+             ▼
+        PG トランザクション(alarms + outbox)
+             ▼
+        outbox dispatcher(sink ごとに直列)──▶ webhook / script</pre>
+<figcaption><span class="fig-no">図 8</span>goroutine パイプライン構成</figcaption>
+</figure>
+<ul>
+<li><strong>ディスクスプール(WAL)</strong>: ClickHouse 停止時、CH batcher は 64MB 単位のセグメント
+ファイルに追記する(fsync 1 秒間隔)。復旧後は event_id の冪等挿入で再送する。起動時は必ずスプールの
+リプレイから始める</li>
+<li><strong>縮退モード</strong>: frame channel の使用率が 80% を超えたら MIB 解決を後回しにし
+(生 OID のまま格納し、後段のバックフィルで解決)、デコードとルーティングを優先する</li>
+<li>HLD §12 の目標負荷(定常 500 traps/sec、バースト 5,000)に対し、この構成の律速は CH 挿入では
+なく PG トランザクションだが、遷移を伴う Trap は全体の一部であり、shard 並列で十分に収まる</li>
+</ul>
+
+<h2 id="config"><span class="no">11</span>設定ファイル</h2>
+<figure>
+<pre><code># /etc/sekisho/sekisho.yaml
+listeners:
+  - kind: udp            # forward 受信(Phase 1)/ 直接受信(Phase 2)共通
+    bind: 0.0.0.0:1620
+  # - kind: udp
+  #   bind: 0.0.0.0:162
+snmp:
+  v3_users: []           # USM ユーザ定義(鍵は環境変数参照)
+  source_acl: []         # 直接受信時の送信元許可リスト
+stores:
+  clickhouse: { dsn: "clickhouse://...", spool_dir: /var/lib/sekisho/spool }
+  postgres:   { dsn: "postgres://..." }
+rules:
+  repo: https://github.com/example/my-rules
+  branch: main           # 保護ブランチのみ
+  poll_interval: 60s
+mibs:
+  paths: [/etc/sekisho/mibs]
+sinks:
+  - kind: webhook
+    url: https://alert-layer.example/hook
+    hmac_key_env: SEKISHO_HOOK_KEY
+  - kind: script
+    command: /usr/local/bin/notify.sh
+llm:
+  provider: bedrock      # bedrock / openai-compatible / none
+  mask_device_ids: true
+api:
+  bind: 0.0.0.0:8080
+  tokens:
+    - { token_env: SEKISHO_TOKEN_OPS, role: operator }</code></pre>
+<figcaption><span class="fig-no">図 9</span>sekisho.yaml の全体像</figcaption>
+</figure>
+
+<h2 id="cli"><span class="no">12</span>CLI コマンド体系</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">表 7</span>コマンド一覧(いずれも REST API のクライアント。serve を除く)</caption>
+<thead><tr><th>コマンド</th><th>説明</th></tr></thead>
+<tbody>
+<tr><td><code>sekisho serve</code></td><td>エンジン起動(唯一のサーバプロセス)</td></tr>
+<tr><td><code>sekisho route show</code></td><td>ルートテーブル描画(HLD 図 9)</td></tr>
+<tr><td><code>sekisho alarms [list|ack|clear]</code></td><td>Active Alarm の一覧・ack・手動 clear</td></tr>
+<tr><td><code>sekisho events search</code></td><td>イベント検索(<code>--device --oid --from --to</code>)</td></tr>
+<tr><td><code>sekisho unmatched</code></td><td>unrouted の頻度順一覧</td></tr>
+<tr><td><code>sekisho backtest -f rule.yaml --days 30</code></td><td>バックテスト実行と結果表示</td></tr>
+<tr><td><code>sekisho rules init</code></td><td>ルールリポジトリの雛形生成(図 2)</td></tr>
+<tr><td><code>sekisho rules lint</code></td><td>§3.3 の検証(CI と同一実装)</td></tr>
+<tr><td><code>sekisho mib show &lt;oid|symbol&gt;</code></td><td>MIB 定義の表示</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="backtest"><span class="no">13</span>バックテスト実装</h2>
+<ul>
+<li>入力: ルール YAML(単体または差分セット)、期間、対象 device の絞り込み(任意)</li>
+<li>実行: ClickHouse から <code>received_at</code> 昇順でイベントを読み、<strong>隔離した状態エンジン
+インスタンス</strong>でリプレイする。ライブの Alarm 状態には一切影響しない</li>
+<li>決定性: 評価は (イベント列, ルール, mib_set) の純関数(HLD §8)。イベントに刻印された mib_set の
+スナップショットで <code>raw_value</code> を再解決する</li>
+<li>出力: <code>{ matches, alarms_raised, alarms_cleared, mean_duration, flap_count,
+top_keys[], sample_lineage[] }</code>。CI はこれを PR コメントに整形する</li>
+<li>ジョブ管理: <code>POST /backtest</code> は 202 + job ID を返し、進捗(走査済み日数)をポーリングで返す</li>
+</ul>
+
+<h2 id="testing"><span class="no">14</span>テスト戦略</h2>
+<ul>
+<li><strong>公開フィクスチャ</strong>: <code>tests/fixtures/</code> に pcap(生 UDP フレーム)と
+golden JSON(期待される分解済みイベント・Alarm 遷移列)を対で置く。実装置がなくても受信 → 遷移の
+全経路を回帰テストできる(M1 成果物)</li>
+<li><strong>決定性テスト</strong>: 同一 fixtures を 2 回リプレイし、Alarm 遷移列が完全一致することを CI で常時検証する</li>
+<li><strong>DSL golden テスト</strong>: ルール + イベント列 → 期待遷移列、を YAML で記述するテーブル駆動形式</li>
+<li><strong>負荷テスト</strong>: 合成 Trap 生成器で 5,000 traps/sec × 5 分を流し、drop 0・スプール回復を検証する</li>
+</ul>
+
+<h2 id="open"><span class="no">15</span>未決事項</h2>
+<ul>
+<li>OIDC / SSO 連携(v1 は静的トークンで開始)</li>
+<li>S3 階層を含むバックテストの性能目標値</li>
+<li>Web UI の画面設計(ルートテーブル・Active Alarm・イベント検索・lineage 表示の 4 画面から着手)</li>
+<li>Go の採用ライブラリ確定(SNMP デコーダ・MIB パーサは M1 で比較検証する)</li>
+</ul>
+
+</main>
+</div>
+
+<!-- ======================================================================= -->
+<!-- English edition                                                          -->
+<!-- ======================================================================= -->
+<div class="layout" id="layout-en">
+<nav class="toc" aria-label="Table of contents">
+  <div class="toc-title">Contents</div>
+  <a href="#position-en"><span class="no">1</span>Purpose of This Document</a>
+  <a href="#repos-en"><span class="no">2</span>Repository Layout</a>
+  <a href="#dsl-en"><span class="no">3</span>Routing DSL Specification</a>
+  <a href="#engine-en"><span class="no">4</span>State Engine Specification</a>
+  <a href="#db-en"><span class="no">5</span>Database Schemas</a>
+  <a href="#stream-en"><span class="no">6</span>alarm.* Stream Details</a>
+  <a href="#api-en"><span class="no">7</span>REST API Specification</a>
+  <a href="#mcp-en"><span class="no">8</span>MCP Tool Definitions</a>
+  <a href="#mib-en"><span class="no">9</span>MIB Conventions and Loading</a>
+  <a href="#pipeline-en"><span class="no">10</span>Reception Pipeline</a>
+  <a href="#config-en"><span class="no">11</span>Configuration File</a>
+  <a href="#cli-en"><span class="no">12</span>CLI Commands</a>
+  <a href="#backtest-en"><span class="no">13</span>Backtest Implementation</a>
+  <a href="#testing-en"><span class="no">14</span>Test Strategy</a>
+  <a href="#open-en"><span class="no">15</span>Open Questions</a>
+</nav>
+<main>
+
+<header class="cover">
+  <div class="lang-switch"><a href="index.html">← HLD</a> · <a data-setlang="ja">日本語</a> · <span class="current">English</span></div>
+  <div class="kicker">Design Doc</div>
+  <h1>sekisho — Low Level Design</h1>
+  <p class="subtitle">Implementation specification of the architecture fixed in the HLD: DSL schema, state machine, database schemas, API, and pipeline structure.</p>
+  <dl class="meta-grid">
+    <div><dt>Status</dt><dd><span class="badge">Draft</span></dd></div>
+    <div><dt>Codename</dt><dd>sekisho (関所)</dd></div>
+    <div><dt>Last Updated</dt><dd>2026-07-26</dd></div>
+    <div><dt>License</dt><dd>Apache-2.0 + DCO</dd></div>
+  </dl>
+</header>
+
+<h2 id="position-en"><span class="no">1</span>Purpose of This Document</h2>
+<p>
+This document is the implementation specification of the architecture fixed in the
+<a href="index.html">HLD</a>. It settles the items the HLD deferred: the formal routing DSL schema,
+alarm.* stream details, the out-of-order grace window, the end of the retention period, MIB
+conventions, and the details of the public contracts. Values marked as "proposed" are initial
+defaults; they may be revised based on measurement (changes are absorbed by configuration).
+</p>
+
+<h2 id="repos-en"><span class="no">2</span>Repository Layout</h2>
+<h3><span class="no">2.1</span>The sekisho repository (this one)</h3>
+<figure>
+<pre>sekisho/
+├── cmd/sekisho/            # entry point (single binary)
+├── internal/
+│   ├── receiver/           # UDP listener, forward reception, v1→v2 normalization
+│   ├── mib/                # MIB compiler, symbol resolution, mib_set computation
+│   ├── router/             # routing table (longest-prefix + where)
+│   ├── engine/             # state engine (alarm state machine, flap, expire)
+│   ├── store/
+│   │   ├── ch/             # ClickHouse client, batch inserts, spool
+│   │   └── pg/             # PostgreSQL, transactions, outbox
+│   ├── outbox/             # alarm.* delivery (webhook / script sinks)
+│   ├── api/                # REST API (authz and audit included)
+│   ├── mcp/                # MCP server (thin wrapper over the API)
+│   ├── llm/                # LLM provider abstraction (Bedrock / OpenAI-compatible)
+│   └── backtest/           # replay runner
+├── web/                    # React SPA (built assets via go:embed)
+├── mibs/std/               # bundled standard MIBs only (§9)
+├── site/                   # design documents (GitHub Pages)
+├── LICENSE / DCO
+└── .github/workflows/</pre>
+<figcaption><span class="fig-no">Figure 1</span>Main repository layout</figcaption>
+</figure>
+<h3><span class="no">2.2</span>The rules repository (scaffolded by <code>sekisho rules init</code>)</h3>
+<figure>
+<pre>my-rules/
+├── routes.yaml             # the routing table (one file, in evaluation order)
+├── rules/
+│   ├── if-linkdown.yaml    # stateful rules (one file per rule)
+│   └── ...
+├── mibs/                   # user-supplied private MIBs (§9)
+├── tests/
+│   └── fixtures/           # golden events (CI regression inputs)
+└── .github/workflows/
+    └── rules-ci.yml        # lint + backtest + PR comment</pre>
+<figcaption><span class="fig-no">Figure 2</span>Rules repository layout</figcaption>
+</figure>
+
+<h2 id="dsl-en"><span class="no">3</span>Routing DSL Specification</h2>
+<h3><span class="no">3.1</span>routes.yaml</h3>
+<figure>
+<pre><code>version: 1
+routes:
+  - match: { trap_oid: "1.3.6.1.6.3.1.1.5.3" }        # exact match
+    action: { stateful: if-linkdown }
+  - match:
+      trap_oid: "1.3.6.1.4.1.9999.2.*"                 # prefix match (trailing .* only)
+      where: { alarmSeverity: info }
+    action: drop
+  - default:
+      - drop: { trap_oid: "1.3.6.1.4.1.9999.9.*" }
+      - else: { bucket: unrouted }</code></pre>
+<figcaption><span class="fig-no">Figure 3</span>Formal shape of routes.yaml</figcaption>
+</figure>
+<ul>
+<li><code>trap_oid</code> patterns are <strong>exact</strong> or <strong>trailing-<code>.*</code> prefix</strong>
+only. Regular expressions and mid-pattern wildcards are deliberately not allowed (preserving the
+simplicity of the total order). Symbolic notation (<code>IF-MIB::linkDown</code>) is accepted and
+resolved to numeric OIDs at load time</li>
+<li><code>where</code> maps varbind names (or raw OIDs) to conditions. Three condition forms: a value,
+a list of values (OR), and <code>{ gte: N }</code> / <code>{ lte: N }</code> (numeric types only).
+Enums are written as labels and compiled to typed values at load time</li>
+<li><code>action</code> is one of <code>stateful: &lt;rule&gt;</code> / <code>drop</code> /
+<code>bucket: unrouted</code>. The <code>default</code> block allows one level of nesting</li>
+</ul>
+<h3><span class="no">3.2</span>Rule files</h3>
+<figure>
+<pre><code>rule: if-linkdown
+match:
+  trap: IF-MIB::linkDown
+  where: {}                          # optional; ANDed with the route's where
+key: "{source}:{ifIndex}"
+transition:
+  raise: { severity: major }
+  clear: { trap: IF-MIB::linkUp, same_key: true }
+  # for pattern B use raise_when / clear_when instead of raise:
+  # raise_when: { where: { alarmStatus: [critical, major, minor] },
+  #               severity_from: alarmStatus }
+  # clear_when: { where: { alarmStatus: cleared } }
+flap: { window: 5m, count: 5, calm: 15m }   # optional
+expire_after: 7d                              # optional
+grace: 2s                                     # optional (out-of-order window; default 2s)</code></pre>
+<figcaption><span class="fig-no">Figure 4</span>Formal shape of a rule file (all fields)</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 1</span>Rule field definitions</caption>
+<thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>rule</code></td><td>string (kebab-case)</td><td>yes</td><td>Rule ID, unique within the repository</td></tr>
+<tr><td><code>match.trap</code></td><td>OID / symbol</td><td>yes</td><td>The raise-side trap kind</td></tr>
+<tr><td><code>key</code></td><td>template</td><td>yes</td><td>State key. <code>{source}</code> = resolved device_id, <code>{&lt;varbind&gt;}</code> = value, <code>{instance_of(&lt;name&gt;)}</code> = suffix</td></tr>
+<tr><td><code>transition.raise / clear</code></td><td>object</td><td>pattern A</td><td>Paired-kind form; <code>clear.same_key: true</code> is fixed</td></tr>
+<tr><td><code>transition.raise_when / clear_when</code></td><td>object</td><td>pattern B</td><td>Status-varbind form; <code>severity_from</code> maps a varbind to severity</td></tr>
+<tr><td><code>flap</code></td><td>object</td><td>optional</td><td>Flapping after <code>count</code> transitions within <code>window</code>; ends after <code>calm</code> without transitions</td></tr>
+<tr><td><code>expire_after</code></td><td>duration</td><td>optional</td><td>Auto-clear with reason=expired past the deadline</td></tr>
+<tr><td><code>grace</code></td><td>duration</td><td>optional</td><td>Out-of-order grace window; default 2s (§4.2)</td></tr>
+</tbody>
+</table></div>
+<p>The severity enum has five levels: <code>critical / major / minor / warning / info</code> (X.733-aligned; cleared is a transition, not a severity).</p>
+<h3><span class="no">3.3</span>Load-time validation</h3>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 2</span>Validation codes and behavior</caption>
+<thead><tr><th>Code</th><th>Condition</th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td>E001</td><td>Duplicate routes with identical prefix and where</td><td>Load fails (error)</td></tr>
+<tr><td>E002</td><td>Duplicate rule IDs / route references a nonexistent rule</td><td>Load fails</td></tr>
+<tr><td>E003</td><td>YAML schema violation (including unknown fields)</td><td>Load fails</td></tr>
+<tr><td>W101</td><td>Symbol not resolvable in the MIB</td><td>The rule is disabled with a warning (others stay live)</td></tr>
+<tr><td>W102</td><td>Key references a varbind absent from the NOTIFICATION-TYPE OBJECTS clause</td><td>Warning only (real traps may still carry it)</td></tr>
+</tbody>
+</table></div>
+<p>
+Evaluation follows the total order "prefix length → definition order in routes.yaml"; the first route
+whose <code>trap_oid</code> and <code>where</code> both hold is selected. This validation and evaluation
+are the same implementation that <code>sekisho rules lint</code> runs in CI.
+</p>
+
+<h2 id="engine-en"><span class="no">4</span>State Engine Specification</h2>
+<h3><span class="no">4.1</span>The alarm state machine</h3>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 3</span>Transition table (rows = current state, columns = input)</caption>
+<thead><tr><th>State \ input</th><th>raise event</th><th>clear event</th><th>expire</th><th>manual clear</th><th>flap threshold</th><th>calm elapsed</th></tr></thead>
+<tbody>
+<tr><td><strong>(none)</strong></td><td>create raised / <code>alarm.raised</code></td><td>record only (no transition)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td><strong>raised</strong></td><td>count++, no transition</td><td>cleared / <code>alarm.cleared(trap)</code></td><td>cleared / <code>alarm.cleared(expired)</code></td><td>cleared / <code>alarm.cleared(manual)</code></td><td>flapping flag ON / <code>alarm.flapping</code></td><td>—</td></tr>
+<tr><td><strong>raised + flapping</strong></td><td>count++, transitions recorded</td><td>internal state follows, flag kept</td><td>as above</td><td>as above</td><td>—</td><td>flag OFF / <code>alarm.updated</code></td></tr>
+</tbody>
+</table></div>
+<ul>
+<li>cleared is terminal. The next raise on the same key creates a <strong>new alarm_id</strong>
+(recurrence is a new alarm; correlation is traceable via the key)</li>
+<li>Severity changes (pattern B's <code>severity_from</code>) fire <code>alarm.updated</code> while
+staying raised</li>
+</ul>
+<h3><span class="no">4.2</span>The out-of-order grace window</h3>
+<p>
+Processing is serialized per key by shard workers hashed on device_id (§10). Each key holds its most
+recent event for <code>grace</code> (default 2 seconds, overridable per rule); if an event with an
+older received_at arrives during the hold, events are reordered by received_at before entering the
+state machine. Late events beyond the grace window are recorded in the event layer as late arrivals and
+do not drive transitions (backtests evaluate in true order, so live/replay divergence is bounded by
+this window).
+</p>
+<h3><span class="no">4.3</span>The expire scheduler</h3>
+<p>
+Alarms with <code>expire_after</code> get <code>expires_at</code> written at raise time. A scheduler
+scans <code>expires_at &lt;= now()</code> every 60 seconds (partial index, §5.1) and executes the
+reason=expired clear transition through the normal path, outbox included.
+</p>
+
+<h2 id="db-en"><span class="no">5</span>Database Schemas</h2>
+<h3><span class="no">5.1</span>PostgreSQL</h3>
+<figure>
+<pre><code>CREATE TABLE alarms (
+  alarm_id     UUID PRIMARY KEY,
+  key          TEXT NOT NULL,
+  device_id    TEXT NOT NULL,
+  rule         TEXT NOT NULL,
+  route_id     TEXT NOT NULL,
+  severity     TEXT NOT NULL,
+  status       TEXT NOT NULL,              -- raised / cleared
+  flapping     BOOLEAN NOT NULL DEFAULT FALSE,
+  count        INTEGER NOT NULL DEFAULT 1,
+  seq          BIGINT  NOT NULL DEFAULT 0, -- alarm.* sequence number
+  raised_at    TIMESTAMPTZ NOT NULL,
+  cleared_at   TIMESTAMPTZ,
+  clear_reason TEXT,                       -- trap / manual / expired
+  expires_at   TIMESTAMPTZ,
+  acked_by     TEXT,
+  acked_at     TIMESTAMPTZ,
+  raise_event  UUID NOT NULL,              -- lineage: ingress event_id
+  clear_event  UUID
+);
+CREATE UNIQUE INDEX alarms_active_key ON alarms (key) WHERE status = 'raised';
+CREATE INDEX alarms_expiry ON alarms (expires_at) WHERE status = 'raised' AND expires_at IS NOT NULL;
+
+CREATE TABLE outbox (
+  id           BIGSERIAL PRIMARY KEY,
+  alarm_id     UUID NOT NULL,
+  seq          BIGINT NOT NULL,
+  kind         TEXT NOT NULL,              -- alarm.raised / updated / ...
+  payload      JSONB NOT NULL,             -- the full §6 envelope
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  delivered_at TIMESTAMPTZ,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (alarm_id, seq)
+);
+
+CREATE TABLE rule_drafts (                 -- LLM proposal drafts (§8)
+  draft_id     UUID PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL,
+  author       TEXT NOT NULL,              -- mcp:&lt;client&gt; / user:&lt;name&gt;
+  target_trap  TEXT NOT NULL,
+  yaml         TEXT NOT NULL,
+  backtest     JSONB,                      -- latest backtest result
+  status       TEXT NOT NULL               -- draft / pr_opened / merged / discarded
+);</code></pre>
+<figcaption><span class="fig-no">Figure 5</span>PostgreSQL DDL (main tables)</figcaption>
+</figure>
+<p>
+Alarm transitions and outbox inserts run in <strong>one transaction</strong> (the transactional outbox
+of HLD §6). The partial unique index <code>alarms_active_key</code> enforces "at most one raised alarm
+per key" at the database level.
+</p>
+<h3><span class="no">5.2</span>ClickHouse</h3>
+<p><code>ingress_events</code> is as in HLD Figure 12, plus two materialized views.</p>
+<figure>
+<pre><code>-- route counters (source of the HLD Figure 9 rendering)
+CREATE MATERIALIZED VIEW route_counters
+ENGINE = SummingMergeTree ORDER BY (route_id, day)
+AS SELECT route_id, toDate(received_at) AS day, count() AS hits,
+          max(received_at) AS last_seen
+   FROM ingress_events GROUP BY route_id, day;
+
+-- unrouted frequencies (source of list_unmatched_traps)
+CREATE MATERIALIZED VIEW unrouted_summary
+ENGINE = SummingMergeTree ORDER BY (trap_oid, day)
+AS SELECT trap_oid, toDate(received_at) AS day, count() AS hits,
+          max(received_at) AS last_seen
+   FROM ingress_events WHERE route_id = '' GROUP BY trap_oid, day;</code></pre>
+<figcaption><span class="fig-no">Figure 6</span>Materialized view definitions</figcaption>
+</figure>
+<p>
+<strong>Retention (proposed)</strong>: hot tier (local disk) 90 days, then the S3 tier; total retention
+390 days (13 months — year-over-year comparison plus margin). Backtests cover <strong>all
+tiers</strong>; slower scans over the S3 tier are accepted (progress is reported via the API).
+</p>
+
+<h2 id="stream-en"><span class="no">6</span>alarm.* Stream Details</h2>
+<figure>
+<pre><code>{
+  "schema": "sekisho.alarm/v1",
+  "kind": "alarm.raised",
+  "alarm_id": "0197fa3e-...-8c21",
+  "seq": 1,
+  "occurred_at": "2026-07-26T10:03:21.412Z",
+  "device_id": "tokyo-core-01",
+  "key": "tokyo-core-01:1000",
+  "severity": "major",
+  "rule": "if-linkdown",
+  "route_id": "r-000042",
+  "reason": null,                    // cleared only: trap / manual / expired
+  "flapping": false,
+  "count": 1,
+  "lineage": { "event_id": "0197fa3e-...-77b0" },
+  "annotations": { "acked_by": null }
+}</code></pre>
+<figcaption><span class="fig-no">Figure 7</span>Envelope example (alarm.raised)</figcaption>
+</figure>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 4</span>Delivery specification</caption>
+<thead><tr><th>Item</th><th>Specification</th></tr></thead>
+<tbody>
+<tr><td>Ordering</td><td>Serialized per alarm_id; subscribers deduplicate on (alarm_id, seq)</td></tr>
+<tr><td>Retries</td><td>1s → 5s → 30s → 2m → 10m → hourly thereafter. After 24h of backlog the sink is marked degraded, with metric and log warnings (delivery keeps retrying)</td></tr>
+<tr><td>Webhook</td><td>HTTP POST with header <code>X-Sekisho-Signature: sha256=&lt;HMAC&gt;</code> (shared key in config). 2xx = success</td></tr>
+<tr><td>Script sink</td><td>Invoked with the envelope JSON on stdin. Exit 0 = success, nonzero = retry. Timeout 30s (treated as failure). Concurrency 1 per sink (for ordering)</td></tr>
+<tr><td>Recovery</td><td>After prolonged backlog, full reconciliation via <code>GET /api/v1/alarms</code> is recommended (HLD §7)</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="api-en"><span class="no">7</span>REST API Specification</h2>
+<p>
+Base path <code>/api/v1</code>. Authentication is via bearer tokens (static tokens defined in
+configuration; OIDC is §15). Three roles: <code>viewer</code> (read), <code>operator</code> (ack,
+manual clear, backtests), <code>admin</code> (configuration and token management). Every write
+operation is recorded in the audit log.
+</p>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 5</span>Endpoints</caption>
+<thead><tr><th>Method / Path</th><th>Description</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>GET /alarms</code></td><td>Active alarm list; filter by <code>status / device / severity / rule / since</code></td><td>viewer</td></tr>
+<tr><td><code>GET /alarms/{id}</code></td><td>Single alarm (including its lineage event_ids)</td><td>viewer</td></tr>
+<tr><td><code>POST /alarms/{id}/ack</code></td><td>Ack (annotation only, no transition)</td><td>operator</td></tr>
+<tr><td><code>POST /alarms/{id}/clear</code></td><td>Manual clear; <code>reason_note</code> required in the body</td><td>operator</td></tr>
+<tr><td><code>GET /routes</code></td><td>Route table + counters (source of the HLD Figure 9 rendering)</td><td>viewer</td></tr>
+<tr><td><code>GET /events</code></td><td>Event search: <code>device / trap_oid / route / action / from / to</code>, paginated</td><td>viewer</td></tr>
+<tr><td><code>GET /events/{event_id}</code></td><td>Single event (decomposed varbinds and raw_pdu)</td><td>viewer</td></tr>
+<tr><td><code>GET /unmatched</code></td><td>Unrouted list by frequency (<code>unrouted_summary</code>)</td><td>viewer</td></tr>
+<tr><td><code>POST /backtest</code></td><td>Body = rule YAML + period. Returns 202; poll <code>GET /backtest/{job}</code></td><td>operator</td></tr>
+<tr><td><code>GET /mib/{oid}</code></td><td>Symbol, type, enums, and NOTIFICATION-TYPE definition of an OID</td><td>viewer</td></tr>
+<tr><td><code>GET /healthz</code> / <code>GET /metrics</code></td><td>Health check / Prometheus metrics (unauthenticated; bind is configurable)</td><td>—</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="mcp-en"><span class="no">8</span>MCP Tool Definitions</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 6</span>MCP tool → API mapping</caption>
+<thead><tr><th>Tool</th><th>API</th><th>Privilege</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td><code>list_unmatched_traps</code></td><td><code>GET /unmatched</code></td><td>read</td><td></td></tr>
+<tr><td><code>sample_trap_events</code></td><td><code>GET /events</code></td><td>read</td><td>Capped at 100 items</td></tr>
+<tr><td><code>get_mib_info</code></td><td><code>GET /mib/{oid}</code></td><td>read</td><td></td></tr>
+<tr><td><code>list_routes</code> / <code>show_route</code></td><td><code>GET /routes</code></td><td>read</td><td></td></tr>
+<tr><td><code>list_alarms</code> / <code>get_alarm</code></td><td><code>GET /alarms*</code></td><td>read</td><td></td></tr>
+<tr><td><code>backtest_rule</code></td><td><code>POST /backtest</code></td><td>read</td><td>Read-only computation, hence read</td></tr>
+<tr><td><code>propose_rule</code></td><td>internal (LLM + <code>rule_drafts</code>)</td><td>write</td><td>Draft generation only; device IDs follow the masking setting</td></tr>
+<tr><td><code>apply_rule</code></td><td>Opens a PR on the rules repository</td><td>write</td><td>Direct application is structurally impossible (HLD §11)</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="mib-en"><span class="no">9</span>MIB Conventions and Loading</h2>
+<ul>
+<li><strong>Bundled (<code>mibs/std/</code>)</strong>: IETF standard MIBs only — SNMPv2-SMI /
+SNMPv2-TC / SNMPv2-MIB / IF-MIB / SNMP-COMMUNITY-MIB (for <code>snmpTrapAddress</code>) and the like.
+Private MIBs are not redistributable and are never bundled</li>
+<li><strong>User-supplied</strong>: the rules repository's <code>mibs/</code> directory (recommended)
+or local <code>mib_paths</code> directories. Load order is std → user; a same-named module from the
+user side wins</li>
+<li><strong><code>mib_set</code></strong>: a normalized hash of all loaded modules (first 12 hex chars
+of SHA-256), stamped on every event (HLD Figure 12) as the basis of backtest determinism. Past
+mib_sets are kept in a <code>mib_snapshots</code> directory for replay</li>
+<li><strong>Unresolved symbols</strong>: unresolvable OIDs pass through raw (the graceful degradation
+of HLD §5.1). The unresolved ratio is exposed as a metric</li>
+</ul>
+
+<h2 id="pipeline-en"><span class="no">10</span>Reception Pipeline</h2>
+<figure>
+<pre>UDP listener (SO_RCVBUF 8MB)
+   │  frames
+   ▼
+[bounded channel  cap 65,536]  ── when full: drop + self counter
+   ▼
+decoder pool (goroutines × CPU cores)      … BER decode, v1→v2 normalization, MIB resolution
+   ▼
+router                                     … §3 evaluation (read-only, lock-free)
+   ├──▶ CH batcher   … flush = every 1s or 10,000 rows (whichever first); on failure → disk spool
+   └──▶ shard workers × 64 (FNV hash of device_id)
+             │   serialized per key, grace hold (§4.2)
+             ▼
+        PG transaction (alarms + outbox)
+             ▼
+        outbox dispatcher (serialized per sink) ──▶ webhook / script</pre>
+<figcaption><span class="fig-no">Figure 8</span>Goroutine pipeline structure</figcaption>
+</figure>
+<ul>
+<li><strong>Disk spool (WAL)</strong>: while ClickHouse is down, the CH batcher appends to 64MB segment
+files (fsync every second). On recovery, events are re-sent via idempotent event_id inserts. Startup
+always begins by replaying the spool</li>
+<li><strong>Degraded mode</strong>: when the frame channel exceeds 80% utilization, MIB resolution is
+deferred (events are stored with raw OIDs and backfilled later), prioritizing decode and routing</li>
+<li>Against the HLD §12 load target (sustained 500 traps/sec, bursts of 5,000), the bottleneck of this
+structure is the PG transaction, not CH inserts — but only a fraction of traps drive transitions, and
+shard parallelism covers it comfortably</li>
+</ul>
+
+<h2 id="config-en"><span class="no">11</span>Configuration File</h2>
+<figure>
+<pre><code># /etc/sekisho/sekisho.yaml
+listeners:
+  - kind: udp            # forward reception (Phase 1) / direct (Phase 2)
+    bind: 0.0.0.0:1620
+  # - kind: udp
+  #   bind: 0.0.0.0:162
+snmp:
+  v3_users: []           # USM users (keys referenced via environment variables)
+  source_acl: []         # source allowlist for direct reception
+stores:
+  clickhouse: { dsn: "clickhouse://...", spool_dir: /var/lib/sekisho/spool }
+  postgres:   { dsn: "postgres://..." }
+rules:
+  repo: https://github.com/example/my-rules
+  branch: main           # protected branch only
+  poll_interval: 60s
+mibs:
+  paths: [/etc/sekisho/mibs]
+sinks:
+  - kind: webhook
+    url: https://alert-layer.example/hook
+    hmac_key_env: SEKISHO_HOOK_KEY
+  - kind: script
+    command: /usr/local/bin/notify.sh
+llm:
+  provider: bedrock      # bedrock / openai-compatible / none
+  mask_device_ids: true
+api:
+  bind: 0.0.0.0:8080
+  tokens:
+    - { token_env: SEKISHO_TOKEN_OPS, role: operator }</code></pre>
+<figcaption><span class="fig-no">Figure 9</span>sekisho.yaml at a glance</figcaption>
+</figure>
+
+<h2 id="cli-en"><span class="no">12</span>CLI Commands</h2>
+<div class="tablewrap"><table>
+<caption><span class="tbl-no">Table 7</span>Command list (all are REST API clients, except serve)</caption>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>sekisho serve</code></td><td>Start the engine (the only server process)</td></tr>
+<tr><td><code>sekisho route show</code></td><td>Render the route table (HLD Figure 9)</td></tr>
+<tr><td><code>sekisho alarms [list|ack|clear]</code></td><td>List, ack, or manually clear active alarms</td></tr>
+<tr><td><code>sekisho events search</code></td><td>Event search (<code>--device --oid --from --to</code>)</td></tr>
+<tr><td><code>sekisho unmatched</code></td><td>Unrouted list by frequency</td></tr>
+<tr><td><code>sekisho backtest -f rule.yaml --days 30</code></td><td>Run a backtest and show results</td></tr>
+<tr><td><code>sekisho rules init</code></td><td>Scaffold the rules repository (Figure 2)</td></tr>
+<tr><td><code>sekisho rules lint</code></td><td>The §3.3 validation (same implementation as CI)</td></tr>
+<tr><td><code>sekisho mib show &lt;oid|symbol&gt;</code></td><td>Show a MIB definition</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="backtest-en"><span class="no">13</span>Backtest Implementation</h2>
+<ul>
+<li>Input: rule YAML (single or a diff set), a period, and an optional device filter</li>
+<li>Execution: events are read from ClickHouse in <code>received_at</code> order and replayed through an
+<strong>isolated state-engine instance</strong>; live alarm state is never touched</li>
+<li>Determinism: evaluation is a pure function of (event stream, rules, mib_set) (HLD §8);
+<code>raw_value</code> is re-resolved against the mib_set snapshot stamped on each event</li>
+<li>Output: <code>{ matches, alarms_raised, alarms_cleared, mean_duration, flap_count,
+top_keys[], sample_lineage[] }</code>. CI formats this into the PR comment</li>
+<li>Job management: <code>POST /backtest</code> returns 202 + a job ID; progress (days scanned) is
+available by polling</li>
+</ul>
+
+<h2 id="testing-en"><span class="no">14</span>Test Strategy</h2>
+<ul>
+<li><strong>Public fixtures</strong>: <code>tests/fixtures/</code> pairs pcaps (raw UDP frames) with
+golden JSON (expected decomposed events and alarm transition sequences). The full reception-to-transition
+path is regression-testable without real devices (an M1 deliverable)</li>
+<li><strong>Determinism tests</strong>: the same fixtures are replayed twice and the alarm transition
+sequences must match exactly, verified continuously in CI</li>
+<li><strong>DSL golden tests</strong>: table-driven YAML of rule + event sequence → expected transitions</li>
+<li><strong>Load tests</strong>: a synthetic trap generator drives 5,000 traps/sec for 5 minutes,
+verifying zero drops and spool recovery</li>
+</ul>
+
+<h2 id="open-en"><span class="no">15</span>Open Questions</h2>
+<ul>
+<li>OIDC / SSO integration (v1 starts with static tokens)</li>
+<li>Performance targets for backtests spanning the S3 tier</li>
+<li>Web UI screen design (starting from four screens: route table, active alarms, event search, lineage)</li>
+<li>Final choice of Go libraries (SNMP decoder and MIB parser compared and verified in M1)</li>
+</ul>
+
+</main>
+</div>
+
+<script>
+  function setLang(lang) {
+    document.documentElement.lang = lang;
+    try { localStorage.setItem('sekisho-lang', lang); } catch (e) {}
+  }
+  document.querySelectorAll('[data-setlang]').forEach(el => {
+    el.addEventListener('click', (ev) => { ev.preventDefault(); setLang(el.dataset.setlang); });
+  });
+  (() => {
+    const fromQuery = new URLSearchParams(location.search).get('lang');
+    let saved = null;
+    try { saved = localStorage.getItem('sekisho-lang'); } catch (e) {}
+    const lang = ['ja', 'en'].includes(fromQuery) ? fromQuery
+               : ['ja', 'en'].includes(saved) ? saved : 'ja';
+    setLang(lang);
+  })();
+  document.querySelectorAll('nav.toc').forEach(nav => {
+    const title = nav.querySelector('.toc-title');
+    if (title) title.addEventListener('click', () => nav.classList.toggle('open'));
+    nav.querySelectorAll('a').forEach(a =>
+      a.addEventListener('click', () => nav.classList.remove('open')));
+  });
+  document.querySelectorAll('nav.toc').forEach(nav => {
+    const byId = new Map(Array.from(nav.querySelectorAll('a[href^="#"]'))
+      .map(a => [a.getAttribute('href').slice(1), a]));
+    const targets = Array.from(byId.keys()).map(id => document.getElementById(id)).filter(Boolean);
+    let active = null;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (!visible.length) return;
+      if (active) active.classList.remove('active');
+      active = byId.get(visible[0].target.id) || null;
+      if (active) active.classList.add('active');
+    }, { rootMargin: '0px 0px -70% 0px' });
+    targets.forEach(t => observer.observe(t));
+  });
+</script>
+</body>
+</html>
