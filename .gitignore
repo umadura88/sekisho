@@ -1,0 +1,19 @@
+# Binaries
+/bin/
+*.exe
+
+# Go build/test artifacts
+*.test
+*.out
+coverage.txt
+
+# Packet captures — NEVER commit real captures (see plan.html §1 confidentiality rule).
+# Sanitized fixtures must be named *.fixture.pcap and explicitly added.
+*.pcap
+*.pcapng
+!**/*.fixture.pcap
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
