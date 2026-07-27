@@ -310,8 +310,12 @@ IANA の公開レジストリで逆引きできるベンダ識別子であり、
 <ul>
 <li>DoD: ①全 PDU 種別・全値型・整数境界値での往復一致テストが通る。②HLD §1.1.1 の linkDown 例を
 golden テストとして再現できる。③壊れた入力(切り詰め・非 SEQUENCE)をエラーとして拒否する</li>
-<li>既知の制限: 標準ライブラリ encoding/asn1 に依拠するため、<strong>不定長(indefinite length)
-BER はデコードできない</strong>。実運用の装置実装ではまれだが、M1 受信機の既知制限として引き継ぐ</li>
+<li>経緯と既知の制限: 当初は TLV と OID の解析を標準ライブラリ encoding/asn1 に依拠していたが、
+実環境キャプチャでの検証(2026-07-27)により「非最小形の長さエンコード」「int32 を超える OID
+サブ識別子」が実装置の Trap の約半数を占めることが判明し、<strong>BER パーサを自前化して両者を
+許容した</strong>(正規形へのエンコードは不変)。<strong>不定長(indefinite length)BER のみ
+引き続き非対応</strong>(実キャプチャでも未観測)。SNMPv3 はバージョンを検出し、構造エラーとは
+区別できるエラー(<code>ErrUnsupportedVersion</code>)を返す</li>
 </ul>
 
 <h2 id="m0c"><span class="no">5</span>M0c: 合成生成器(<code>trapgen gen</code>)</h2>
