@@ -34,6 +34,8 @@ func main() {
 	switch os.Args[1] {
 	case "replay":
 		err = runReplay(ctx, os.Args[2:])
+	case "inspect":
+		err = runInspect(os.Args[2:])
 	case "gen":
 		err = runGen(ctx, os.Args[2:])
 	case "-h", "--help", "help":
@@ -55,8 +57,9 @@ func printUsage() {
 	fmt.Fprint(os.Stderr, `trapgen — sekisho's SNMP trap emulator
 
 Usage:
-  trapgen replay --file traps.pcap --target host:port [flags]
-  trapgen gen    --scenario scenario.yaml (--target host:port | --out fixture.pcap) [flags]
+  trapgen replay  --file traps.pcap --target host:port [flags]
+  trapgen inspect --file traps.pcap [flags]
+  trapgen gen     --scenario scenario.yaml (--target host:port | --out fixture.pcap) [flags]
 
 Run "trapgen <subcommand> -h" for flags specific to each subcommand.
 See site/plan.html in the sekisho repository for the full specification.
