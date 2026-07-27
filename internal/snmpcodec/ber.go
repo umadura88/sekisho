@@ -7,11 +7,14 @@ import (
 )
 
 // This file implements the low-level BER tag/length/value framing used by
-// the rest of the package. Tag/length parsing is delegated to the standard
-// library's encoding/asn1 (via asn1.RawValue), which correctly handles both
-// short- and long-form definite lengths; everything SNMP-specific (the
-// APPLICATION-tagged types, the CONTEXT-tagged PDU choice, and the integer
-// content encoding) is implemented here.
+// the rest of the package. Parsing is implemented here rather than
+// delegated to encoding/asn1: the standard library is DER-strict, and real
+// devices emit legal-but-non-canonical BER that it rejects. Inspecting a
+// production capture (2026-07-27) showed two such shapes accounting for
+// half the traffic: long-form lengths with superfluous leading zeros /
+// non-minimal long-form lengths, and OID sub-identifiers exceeding int32.
+// This parser tolerates both. Indefinite-length encoding remains
+// unsupported (never observed in the capture) and is rejected explicitly.
 //
 // Encoding is always canonical (minimal-length, definite-form): decoding a
 // message and re-encoding it is a stable, idempotent operation, even if the
@@ -28,14 +31,50 @@ const (
 )
 
 // parseTLV decodes the tag/length/value framing of the first element in b,
-// returning the remaining bytes after it.
+// returning the remaining bytes after it. It accepts any definite-length
+// BER form, including non-minimal length encodings.
 func parseTLV(b []byte) (asn1.RawValue, []byte, error) {
-	var rv asn1.RawValue
-	rest, err := asn1.Unmarshal(b, &rv)
-	if err != nil {
-		return asn1.RawValue{}, nil, err
+	if len(b) < 2 {
+		return asn1.RawValue{}, nil, fmt.Errorf("snmpcodec: truncated TLV (have %d bytes)", len(b))
 	}
-	return rv, rest, nil
+	ident := b[0]
+	class := int(ident >> 6)
+	constructed := ident&0x20 != 0
+	tag := int(ident & 0x1f)
+	if tag == 0x1f {
+		return asn1.RawValue{}, nil, fmt.Errorf("snmpcodec: high-tag-number form not supported")
+	}
+
+	i := 1
+	var length uint64
+	switch {
+	case b[i] < 0x80: // short form
+		length = uint64(b[i])
+		i++
+	case b[i] == 0x80: // indefinite form
+		return asn1.RawValue{}, nil, fmt.Errorf("snmpcodec: indefinite-length BER not supported")
+	default: // long form; tolerate leading zeros and non-minimal use
+		n := int(b[i] & 0x7f)
+		i++
+		if n > 8 || i+n > len(b) {
+			return asn1.RawValue{}, nil, fmt.Errorf("snmpcodec: invalid long-form length field")
+		}
+		for j := 0; j < n; j++ {
+			length = length<<8 | uint64(b[i])
+			i++
+		}
+	}
+	if length > uint64(len(b)-i) {
+		return asn1.RawValue{}, nil, fmt.Errorf("snmpcodec: TLV length %d exceeds remaining %d bytes", length, len(b)-i)
+	}
+	end := i + int(length)
+	return asn1.RawValue{
+		Class:      class,
+		Tag:        tag,
+		IsCompound: constructed,
+		Bytes:      b[i:end],
+		FullBytes:  b[:end],
+	}, b[end:], nil
 }
 
 // parseElements decodes content as a sequence of consecutive TLV elements,

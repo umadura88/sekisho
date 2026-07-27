@@ -11,6 +11,7 @@ package inspect
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -42,11 +43,12 @@ type Options struct {
 
 // Stats summarizes one inspection run.
 type Stats struct {
-	Total    int // packets in the capture
-	Matched  int // UDP/162 packets
-	Decoded  int // matched packets that decoded as SNMP
-	Failures int // matched packets that did not decode
-	V1, V2c  int // decoded, by SNMP version
+	Total       int // packets in the capture
+	Matched     int // UDP/162 packets
+	Decoded     int // matched packets that decoded as SNMP
+	Failures    int // matched packets that did not decode
+	V1, V2c     int // decoded, by SNMP version
+	Unsupported int // valid SNMP but an unsupported version (v3 etc.)
 
 	Freq      map[string]int // trap OID (dotted) -> count
 	ErrSample []string       // first few decode error messages
@@ -111,9 +113,13 @@ func Run(r io.Reader, out io.Writer, opts Options) (Stats, error) {
 
 		msg, err := snmpcodec.Decode(udp.Payload)
 		if err != nil {
-			stats.Failures++
-			if len(stats.ErrSample) < maxErrorSamples {
-				stats.ErrSample = append(stats.ErrSample, err.Error())
+			if errors.Is(err, snmpcodec.ErrUnsupportedVersion) {
+				stats.Unsupported++
+			} else {
+				stats.Failures++
+				if len(stats.ErrSample) < maxErrorSamples {
+					stats.ErrSample = append(stats.ErrSample, err.Error())
+				}
 			}
 			continue
 		}
@@ -260,8 +266,8 @@ func valueString(v snmpcodec.Value) string {
 
 func writeSummary(out io.Writer, s *Stats) {
 	fmt.Fprintf(out, "\n--- summary ---\n")
-	fmt.Fprintf(out, "packets=%d matched(udp/162)=%d decoded=%d failures=%d  v1=%d v2c=%d\n",
-		s.Total, s.Matched, s.Decoded, s.Failures, s.V1, s.V2c)
+	fmt.Fprintf(out, "packets=%d matched(udp/162)=%d decoded=%d failures=%d unsupported-version=%d  v1=%d v2c=%d\n",
+		s.Total, s.Matched, s.Decoded, s.Failures, s.Unsupported, s.V1, s.V2c)
 
 	if len(s.ErrSample) > 0 {
 		fmt.Fprintf(out, "decode error samples:\n")

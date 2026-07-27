@@ -19,6 +19,7 @@ package snmpcodec
 
 import (
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"net"
 )
@@ -28,6 +29,13 @@ const (
 	VersionV1  = 0
 	VersionV2c = 1
 )
+
+// ErrUnsupportedVersion is returned (wrapped) by Decode when the message's
+// version field names a version this codec does not implement — notably
+// SNMPv3, whose message layout (USM security parameters, scoped PDU) is
+// entirely different. Callers can distinguish this from a malformed
+// message with errors.Is.
+var ErrUnsupportedVersion = errors.New("snmpcodec: unsupported SNMP version (only v1/v2c)")
 
 // PDUType identifies which PDU variant a Message carries, by its
 // context-specific BER tag.
@@ -162,6 +170,11 @@ func Decode(data []byte) (*Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("snmpcodec: parse message elements: %w", err)
 	}
+	if len(elems) >= 1 {
+		if v := decodeBEInt(elems[0].Bytes); v != VersionV1 && v != VersionV2c {
+			return nil, fmt.Errorf("%w: version field %d", ErrUnsupportedVersion, v)
+		}
+	}
 	if len(elems) < 3 {
 		return nil, fmt.Errorf("snmpcodec: message has %d elements, want 3", len(elems))
 	}
@@ -190,11 +203,14 @@ func Decode(data []byte) (*Message, error) {
 		if len(pduElems) < 6 {
 			return nil, fmt.Errorf("snmpcodec: v1 trap PDU has %d elements, want 6", len(pduElems))
 		}
-		var ent asn1.ObjectIdentifier
-		if _, err := asn1.Unmarshal(pduElems[0].FullBytes, &ent); err != nil {
+		if pduElems[0].Class != asn1.ClassUniversal || pduElems[0].Tag != asn1.TagOID {
+			return nil, fmt.Errorf("snmpcodec: enterprise field is not an OID")
+		}
+		ent, err := decodeOIDContent(pduElems[0].Bytes)
+		if err != nil {
 			return nil, fmt.Errorf("snmpcodec: enterprise OID: %w", err)
 		}
-		m.Enterprise = ObjectIdentifier(ent)
+		m.Enterprise = ent
 
 		if pduElems[1].Class != asn1.ClassApplication || pduElems[1].Tag != appIPAddress || len(pduElems[1].Bytes) != 4 {
 			return nil, fmt.Errorf("snmpcodec: invalid agent-addr field")
@@ -247,15 +263,18 @@ func decodeVarbindList(rv asn1.RawValue) ([]Varbind, error) {
 		if len(fields) != 2 {
 			return nil, fmt.Errorf("snmpcodec: varbind has %d fields, want 2", len(fields))
 		}
-		var oid asn1.ObjectIdentifier
-		if _, err := asn1.Unmarshal(fields[0].FullBytes, &oid); err != nil {
+		if fields[0].Class != asn1.ClassUniversal || fields[0].Tag != asn1.TagOID {
+			return nil, fmt.Errorf("snmpcodec: varbind name is not an OID")
+		}
+		name, err := decodeOIDContent(fields[0].Bytes)
+		if err != nil {
 			return nil, fmt.Errorf("snmpcodec: varbind name OID: %w", err)
 		}
 		val, err := decodeValue(fields[1])
 		if err != nil {
-			return nil, fmt.Errorf("snmpcodec: varbind %s value: %w", ObjectIdentifier(oid), err)
+			return nil, fmt.Errorf("snmpcodec: varbind %s value: %w", name, err)
 		}
-		vbs = append(vbs, Varbind{Name: ObjectIdentifier(oid), Value: val})
+		vbs = append(vbs, Varbind{Name: name, Value: val})
 	}
 	return vbs, nil
 }
@@ -269,11 +288,11 @@ func decodeValue(rv asn1.RawValue) (Value, error) {
 	case rv.Class == asn1.ClassUniversal && rv.Tag == asn1.TagNull:
 		return Value{Type: TypeNull}, nil
 	case rv.Class == asn1.ClassUniversal && rv.Tag == asn1.TagOID:
-		var oid asn1.ObjectIdentifier
-		if _, err := asn1.Unmarshal(rv.FullBytes, &oid); err != nil {
+		oid, err := decodeOIDContent(rv.Bytes)
+		if err != nil {
 			return Value{}, err
 		}
-		return Value{Type: TypeObjectIdentifier, OID: ObjectIdentifier(oid)}, nil
+		return Value{Type: TypeObjectIdentifier, OID: oid}, nil
 	case rv.Class == asn1.ClassApplication && rv.Tag == appIPAddress:
 		if len(rv.Bytes) != 4 {
 			return Value{}, fmt.Errorf("invalid IpAddress length %d", len(rv.Bytes))
@@ -309,7 +328,11 @@ func encodeValue(v Value) ([]byte, error) {
 	case TypeNull:
 		return encodeTLV(asn1.ClassUniversal, false, asn1.TagNull, nil), nil
 	case TypeObjectIdentifier:
-		return asn1.Marshal(asn1.ObjectIdentifier(v.OID))
+		content, err := encodeOIDContent(v.OID)
+		if err != nil {
+			return nil, err
+		}
+		return encodeTLV(asn1.ClassUniversal, false, asn1.TagOID, content), nil
 	case TypeIPAddress:
 		ip4 := v.IP.To4()
 		if ip4 == nil {
@@ -340,10 +363,11 @@ func encodeValue(v Value) ([]byte, error) {
 func encodeVarbindList(vbs []Varbind) ([]byte, error) {
 	var content []byte
 	for _, vb := range vbs {
-		nameBytes, err := asn1.Marshal(asn1.ObjectIdentifier(vb.Name))
+		nameContent, err := encodeOIDContent(vb.Name)
 		if err != nil {
 			return nil, fmt.Errorf("snmpcodec: encode varbind name %s: %w", vb.Name, err)
 		}
+		nameBytes := encodeTLV(asn1.ClassUniversal, false, asn1.TagOID, nameContent)
 		valBytes, err := encodeValue(vb.Value)
 		if err != nil {
 			return nil, fmt.Errorf("snmpcodec: encode varbind %s value: %w", vb.Name, err)
@@ -366,10 +390,11 @@ func (m *Message) Encode() ([]byte, error) {
 
 	var pduContent []byte
 	if m.PDUType == PDUTrapV1 {
-		oidBytes, err := asn1.Marshal(asn1.ObjectIdentifier(m.Enterprise))
+		entContent, err := encodeOIDContent(m.Enterprise)
 		if err != nil {
 			return nil, fmt.Errorf("snmpcodec: encode enterprise OID: %w", err)
 		}
+		oidBytes := encodeTLV(asn1.ClassUniversal, false, asn1.TagOID, entContent)
 		ip4 := m.AgentAddr.To4()
 		if ip4 == nil {
 			return nil, fmt.Errorf("snmpcodec: AgentAddr must be IPv4, got %v", m.AgentAddr)
