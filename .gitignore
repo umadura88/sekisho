@@ -8,7 +8,7 @@
 coverage.txt
 
 # Packet captures — NEVER commit real captures (see plan.html §1 confidentiality rule).
-# Sanitized fixtures must be named *.fixture.pcap and explicitly added.
+# Synthetic fixtures (trapgen gen --out) must be named *.fixture.pcap and explicitly added.
 *.pcap
 *.pcapng
 !**/*.fixture.pcap
@@ -17,3 +17,10 @@ coverage.txt
 .DS_Store
 .vscode/
 .idea/
+
+# test_data/ is the designated local home for real captures (tcpdump from
+# production). EVERYTHING inside is ignored regardless of name — even
+# *.fixture.pcap — so nothing here can ever be committed. Only .gitkeep
+# is tracked, to keep the directory present.
+test_data/*
+!test_data/.gitkeep
