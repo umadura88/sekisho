@@ -299,7 +299,8 @@ transition:
   # clear_when: { where: { alarmStatus: cleared } }
 flap: { window: 5m, count: 5, calm: 15m }   # 任意
 expire_after: 7d                              # 任意
-grace: 2s                                     # 任意(順序逆転の猶予窓。既定 2s)</code></pre>
+grace: 2s                                     # 任意(順序逆転の猶予窓。既定 2s)
+diagnose: { script: check-interface.sh, timeout: 60s }   # 任意。raise 時に調査を実行(HLD §7.1)</code></pre>
 <figcaption><span class="fig-no">図 4</span>rule ファイルの正式形(全フィールド)</figcaption>
 </figure>
 <div class="tablewrap"><table>
@@ -314,6 +315,7 @@ grace: 2s                                     # 任意(順序逆転の猶予窓�
 <tr><td><code>flap</code></td><td>object</td><td>任意</td><td><code>window</code> 内に <code>count</code> 回遷移で flapping、<code>calm</code> 無遷移で解除</td></tr>
 <tr><td><code>expire_after</code></td><td>duration</td><td>任意</td><td>超過で reason=expired の自動 clear</td></tr>
 <tr><td><code>grace</code></td><td>duration</td><td>任意</td><td>順序逆転の猶予窓。既定 2s(§4.2)</td></tr>
+<tr><td><code>diagnose</code></td><td>object</td><td>任意</td><td>raise 時に許可ディレクトリ(§11 の <code>diagnostics.script_dir</code>)内のスクリプトを実行し、標準出力を Alarm の調査注記として保存する(§5.1 / §6)。<code>timeout</code> 既定 60s</td></tr>
 </tbody>
 </table></div>
 <p>severity の列挙は <code>critical / major / minor / warning / info</code> の 5 段とする(X.733 準拠。cleared は severity ではなく状態遷移)。</p>
@@ -404,6 +406,15 @@ CREATE TABLE outbox (
   UNIQUE (alarm_id, seq)
 );
 
+CREATE TABLE alarm_diagnostics (           -- 調査フックの結果(HLD §7.1)
+  alarm_id     UUID NOT NULL,
+  ran_at       TIMESTAMPTZ NOT NULL,
+  script       TEXT NOT NULL,
+  exit_code    INTEGER NOT NULL,
+  output       TEXT NOT NULL,              -- 256KB で切り詰め
+  PRIMARY KEY (alarm_id, ran_at)
+);
+
 CREATE TABLE rule_drafts (                 -- LLM 提案のドラフト(§8)
   draft_id     UUID PRIMARY KEY,
   created_at   TIMESTAMPTZ NOT NULL,
@@ -475,6 +486,7 @@ AS SELECT trap_oid, toDate(received_at) AS day, count() AS hits,
 <tr><td>Webhook</td><td>HTTP POST、ヘッダ <code>X-Sekisho-Signature: sha256=&lt;HMAC&gt;</code>(共有鍵は設定)。2xx = 成功</td></tr>
 <tr><td>script sink</td><td>envelope JSON を標準入力に渡して起動。exit 0 = 成功、非 0 = リトライ。タイムアウト 30s(超過は失敗扱い)。並列度は sink ごとに 1(順序保証のため)</td></tr>
 <tr><td>復旧</td><td>長期滞留後は <code>GET /api/v1/alarms</code> での全量リコンサイルを推奨(HLD §7)</td></tr>
+<tr><td>調査フック</td><td><code>alarm.raised</code> 到達時に配送ワーカーで実行。stdin = envelope JSON、stdout(256KB 上限で切り詰め)を <code>alarm_diagnostics</code>(§5.1)に保存。タイムアウト既定 60s。失敗(非 0 exit)も exit_code とともに記録し、リトライは 1 回。Alarm の状態には一切影響しない</td></tr>
 </tbody>
 </table></div>
 
@@ -489,7 +501,7 @@ AS SELECT trap_oid, toDate(received_at) AS day, count() AS hits,
 <thead><tr><th>Method / Path</th><th>説明</th><th>ロール</th></tr></thead>
 <tbody>
 <tr><td><code>GET /alarms</code></td><td>Active Alarm List。<code>status / device / severity / rule / since</code> で絞り込み</td><td>viewer</td></tr>
-<tr><td><code>GET /alarms/{id}</code></td><td>個別 Alarm(lineage の event_id 列を含む)</td><td>viewer</td></tr>
+<tr><td><code>GET /alarms/{id}</code></td><td>個別 Alarm(lineage の event_id 列と調査結果を含む)</td><td>viewer</td></tr>
 <tr><td><code>POST /alarms/{id}/ack</code></td><td>ack(注記のみ、遷移なし)</td><td>operator</td></tr>
 <tr><td><code>POST /alarms/{id}/clear</code></td><td>手動 clear。body に <code>reason_note</code> 必須</td><td>operator</td></tr>
 <tr><td><code>GET /routes</code></td><td>ルートテーブル + カウンタ(HLD 図 9 の描画ソース)</td><td>viewer</td></tr>
@@ -587,6 +599,10 @@ sinks:
     hmac_key_env: SEKISHO_HOOK_KEY
   - kind: script
     command: /usr/local/bin/notify.sh
+diagnostics:
+  script_dir: /etc/sekisho/diag.d   # 調査フック(HLD §7.1)が実行できる唯一の場所
+  timeout: 60s
+  output_limit: 256KB
 llm:
   provider: bedrock      # bedrock / openai-compatible / none
   mask_device_ids: true
@@ -779,7 +795,8 @@ transition:
   # clear_when: { where: { alarmStatus: cleared } }
 flap: { window: 5m, count: 5, calm: 15m }   # optional
 expire_after: 7d                              # optional
-grace: 2s                                     # optional (out-of-order window; default 2s)</code></pre>
+grace: 2s                                     # optional (out-of-order window; default 2s)
+diagnose: { script: check-interface.sh, timeout: 60s }   # optional: investigate on raise (HLD §7.1)</code></pre>
 <figcaption><span class="fig-no">Figure 4</span>Formal shape of a rule file (all fields)</figcaption>
 </figure>
 <div class="tablewrap"><table>
@@ -794,6 +811,7 @@ grace: 2s                                     # optional (out-of-order window; d
 <tr><td><code>flap</code></td><td>object</td><td>optional</td><td>Flapping after <code>count</code> transitions within <code>window</code>; ends after <code>calm</code> without transitions</td></tr>
 <tr><td><code>expire_after</code></td><td>duration</td><td>optional</td><td>Auto-clear with reason=expired past the deadline</td></tr>
 <tr><td><code>grace</code></td><td>duration</td><td>optional</td><td>Out-of-order grace window; default 2s (§4.2)</td></tr>
+<tr><td><code>diagnose</code></td><td>object</td><td>optional</td><td>On raise, runs a script from the allowlisted directory (§11's <code>diagnostics.script_dir</code>) and stores its stdout as the alarm's diagnostic annotation (§5.1 / §6). <code>timeout</code> defaults to 60s</td></tr>
 </tbody>
 </table></div>
 <p>The severity enum has five levels: <code>critical / major / minor / warning / info</code> (X.733-aligned; cleared is a transition, not a severity).</p>
@@ -886,6 +904,15 @@ CREATE TABLE outbox (
   UNIQUE (alarm_id, seq)
 );
 
+CREATE TABLE alarm_diagnostics (           -- diagnostic hook results (HLD §7.1)
+  alarm_id     UUID NOT NULL,
+  ran_at       TIMESTAMPTZ NOT NULL,
+  script       TEXT NOT NULL,
+  exit_code    INTEGER NOT NULL,
+  output       TEXT NOT NULL,              -- truncated at 256KB
+  PRIMARY KEY (alarm_id, ran_at)
+);
+
 CREATE TABLE rule_drafts (                 -- LLM proposal drafts (§8)
   draft_id     UUID PRIMARY KEY,
   created_at   TIMESTAMPTZ NOT NULL,
@@ -956,6 +983,7 @@ tiers</strong>; slower scans over the S3 tier are accepted (progress is reported
 <tr><td>Webhook</td><td>HTTP POST with header <code>X-Sekisho-Signature: sha256=&lt;HMAC&gt;</code> (shared key in config). 2xx = success</td></tr>
 <tr><td>Script sink</td><td>Invoked with the envelope JSON on stdin. Exit 0 = success, nonzero = retry. Timeout 30s (treated as failure). Concurrency 1 per sink (for ordering)</td></tr>
 <tr><td>Recovery</td><td>After prolonged backlog, full reconciliation via <code>GET /api/v1/alarms</code> is recommended (HLD §7)</td></tr>
+<tr><td>Diagnostic hook</td><td>Runs in the delivery workers when <code>alarm.raised</code> arrives. stdin = the envelope JSON; stdout (truncated at 256KB) is stored in <code>alarm_diagnostics</code> (§5.1). Default timeout 60s. Failures (nonzero exit) are recorded with their exit code; one retry. Never affects alarm state</td></tr>
 </tbody>
 </table></div>
 
@@ -971,7 +999,7 @@ operation is recorded in the audit log.
 <thead><tr><th>Method / Path</th><th>Description</th><th>Role</th></tr></thead>
 <tbody>
 <tr><td><code>GET /alarms</code></td><td>Active alarm list; filter by <code>status / device / severity / rule / since</code></td><td>viewer</td></tr>
-<tr><td><code>GET /alarms/{id}</code></td><td>Single alarm (including its lineage event_ids)</td><td>viewer</td></tr>
+<tr><td><code>GET /alarms/{id}</code></td><td>Single alarm (including its lineage event_ids and diagnostic output)</td><td>viewer</td></tr>
 <tr><td><code>POST /alarms/{id}/ack</code></td><td>Ack (annotation only, no transition)</td><td>operator</td></tr>
 <tr><td><code>POST /alarms/{id}/clear</code></td><td>Manual clear; <code>reason_note</code> required in the body</td><td>operator</td></tr>
 <tr><td><code>GET /routes</code></td><td>Route table + counters (source of the HLD Figure 9 rendering)</td><td>viewer</td></tr>
@@ -1071,6 +1099,10 @@ sinks:
     hmac_key_env: SEKISHO_HOOK_KEY
   - kind: script
     command: /usr/local/bin/notify.sh
+diagnostics:
+  script_dir: /etc/sekisho/diag.d   # the only place the diagnostic hook (HLD §7.1) may execute from
+  timeout: 60s
+  output_limit: 256KB
 llm:
   provider: bedrock      # bedrock / openai-compatible / none
   mask_device_ids: true

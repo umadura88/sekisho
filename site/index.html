@@ -239,6 +239,7 @@
   <a class="toc-h2" href="#stateful-rules"><span class="no">5.3</span>statefulルール 3パターン</a>
   <a href="#datastore"><span class="no">6</span>データストア</a>
   <a href="#alarm-stream"><span class="no">7</span>alarm.* ストリーム</a>
+  <a class="toc-h2" href="#diag"><span class="no">7.1</span>調査フック</a>
   <a href="#mcp"><span class="no">8</span>MCPサーバ</a>
   <a href="#llm"><span class="no">9</span>LLMプロバイダ</a>
   <a href="#deploy"><span class="no">10</span>デプロイ</a>
@@ -517,6 +518,8 @@ raise/clear されて記録に残り、抑止されるのは通知だけであ�
 <li>状態エンジン(raise/clear ペアリング、flapping 検出、状態キー)= Alarm 管理</li>
 <li>Event 全量保存と来歴刻印</li>
 <li>alarm.* ストリーム出力(Webhook)+ ack API</li>
+<li>調査フック — <code>alarm.raised</code> を契機に診断スクリプトを実行し、結果を Alarm に注記として
+添付する(§7.1)</li>
 <li>MCP サーバ(unmatched 観測、ルール提案、バックテスト、適用)</li>
 <li>LLM プロバイダ抽象(Bedrock / ローカル LLM)</li>
 <li>REST API(状態エンジン・ルート・イベント検索・ack への唯一のアクセス面)と、その薄い
@@ -843,6 +846,28 @@ alarm.* ストリームは、将来の Alert 層や Incident 管理システム�
 <li>スキーマはバージョン付き JSON とし、後方互換を守る(互換性ポリシーは §14)</li>
 </ul>
 
+<h3 id="diag"><span class="no">7.1</span>調査フック(diagnostic hook)</h3>
+<p>
+サーバ運用の自動アクションが「自動修復」(プロセス再起動など)に向かうのに対し、ネットワーク障害は
+スクリプトでは直らない。ファイバ断も SFP 故障も対向装置の電源断も、実行できる正しい自動化は修復では
+なく<strong>初動調査</strong>である。しかも障害の一次証拠 — 光レベル、ネイバー状態、進行中の flap — は
+運用者がログインする頃には揮発している。そこで sekisho は <code>alarm.raised</code> を契機とする
+<strong>調査フック</strong>を持つ。
+</p>
+<ul>
+<li>ルールが <code>diagnose</code> を宣言すると、raise の瞬間に指定スクリプト(ping / traceroute /
+該当 IF の SNMP GET など)が実行され、<strong>標準出力がその Alarm に注記(evidence)として
+添付</strong>される。運用者は Active Alarm List から「何が起きたか(lineage)」と「発生瞬間に何が
+見えたか(調査結果)」を一画面で確認できる</li>
+<li>調査は <strong>Alarm の状態を一切変えない</strong>(§2.2 の境界ルールに従う。ack と同じ
+「事実への注記」である)。実行は outbox の先の配送ワーカーに隔離され、受信ホットパスには
+影響しない(§12)</li>
+<li>スクリプトの紐づけはルールリポジトリ経由 — つまり <strong>git ゲート(§11)のレビューを
+通ってのみ変更できる</strong>。実行できる実体は、設定で許可したディレクトリ内のスクリプトに限定する</li>
+<li>clear 側のフックは設けない。ネットワークは「スクリプトで復旧」しないため、この機構は意図的に
+raise 片側だけの非対称設計とする(必要になれば同じ機構で追加できる)</li>
+</ul>
+
 <h2 id="mcp"><span class="no">8</span>MCP サーバとルールライフサイクル</h2>
 <p>
 sekisho は <strong>MCP をネイティブに組み込んでいる</strong>。AI エージェント(Claude 等)は
@@ -1022,6 +1047,8 @@ get_* / backtest_rule</code>)と変更系(<code>propose_rule / apply_rule</code>
 (Bedrock)へ送るのは MIB 定義と varbind サンプルであり、装置 IP 等の識別子はマスキングできる。
 外部送信を許容しない環境向けに、ローカル LLM 限定モードを提供する</li>
 <li><strong>Webhook は署名する</strong>(HMAC)。購読者は署名検証によって偽の alarm.* を排除できる</li>
+<li><strong>調査フック(§7.1)が実行できるのは、許可ディレクトリ内のスクリプトだけである</strong>。
+紐づけの変更もルールリポジトリ(git ゲート)経由に限られる</li>
 <li><strong>162 番直接受信(Phase 2)では受信 ACL とコミュニティ検証を必須とする</strong>。UDP は
 送信元を偽装できるため、送信元アドレスの許可リストを一次防御とする。SNMPv3 の USM(認証・暗号化)に
 対応し、ACL と併用してスプーフィング耐性を高める。資格情報(engineID・ユーザ・鍵)は設定として
@@ -1113,6 +1140,7 @@ M2(状態エンジン)は装置同定(§5.1 の device_id 解決)を前提とす
   <a class="toc-h2" href="#stateful-rules-en"><span class="no">5.3</span>Stateful rules: 3 patterns</a>
   <a href="#datastore-en"><span class="no">6</span>Datastores</a>
   <a href="#alarm-stream-en"><span class="no">7</span>The alarm.* Stream</a>
+  <a class="toc-h2" href="#diag-en"><span class="no">7.1</span>The diagnostic hook</a>
   <a href="#mcp-en"><span class="no">8</span>MCP Server</a>
   <a href="#llm-en"><span class="no">9</span>LLM Providers</a>
   <a href="#deploy-en"><span class="no">10</span>Deployment</a>
@@ -1392,6 +1420,8 @@ notifications) are out of scope. Via snmptrapd forward initially; native listene
 <li>The state engine (raise/clear pairing, flap detection, state keys) = alarm management</li>
 <li>Full event retention with routing-outcome lineage</li>
 <li>alarm.* stream output (webhooks) + ack API</li>
+<li>The diagnostic hook — running investigation scripts on <code>alarm.raised</code> and attaching
+their output to the alarm as evidence (§7.1)</li>
 <li>MCP server (unmatched-trap observability, rule proposals, backtests, apply)</li>
 <li>LLM provider abstraction (Bedrock / local LLM)</li>
 <li>A REST API (the single access surface for the state engine, routes, event search, and ack), with a
@@ -1737,6 +1767,30 @@ delivery workers beyond the outbox, isolated from the reception hot path (§12)<
 <li>The schema is versioned JSON with backward compatibility maintained (compatibility policy in §14)</li>
 </ul>
 
+<h3 id="diag-en"><span class="no">7.1</span>The diagnostic hook</h3>
+<p>
+Where server operations point automated actions at <em>remediation</em> (restart the process), network
+failures are not fixed by scripts: no script repairs a cut fiber, a failed optic, or a powered-off
+remote device. The correct automation is <strong>first-response investigation</strong> — and the
+primary evidence of a failure (optical levels, neighbor state, a flap in progress) is volatile: it is
+gone by the time an operator logs in. sekisho therefore has a <strong>diagnostic hook</strong>
+triggered by <code>alarm.raised</code>.
+</p>
+<ul>
+<li>When a rule declares <code>diagnose</code>, the specified script (ping, traceroute, an SNMP GET of
+the affected interface, …) runs at the moment of the raise, and <strong>its standard output is
+attached to that alarm as evidence</strong>. From the active alarm list, an operator sees both "what
+happened" (lineage) and "what the network looked like at that instant" (the investigation) in one
+place</li>
+<li>Investigation <strong>never changes alarm state</strong> (the boundary rules of §2.2 — like ack, it
+is an annotation on a fact). Execution is isolated in the delivery workers beyond the outbox and never
+touches the reception hot path (§12)</li>
+<li>Scripts are bound to rules through the rules repository — that is, <strong>only through the git
+gate (§11)</strong> — and only scripts inside a configured allowlist directory can be executed</li>
+<li>There is no clear-side hook. Networks are not "recovered by script", so this mechanism is
+deliberately asymmetric — raise-side only (the same machinery could host one later if ever needed)</li>
+</ul>
+
 <h2 id="mcp-en"><span class="no">8</span>MCP Server and the Rule Lifecycle</h2>
 <p>sekisho is <strong>MCP native</strong>: AI agents (Claude and others) co-maintain the rules. The MCP
 tools themselves are thin wrappers over the REST API of §4, operating on the same surface a human uses
@@ -1926,6 +1980,8 @@ are per MCP connection</li>
 external LLM (Bedrock) is MIB definitions and varbind samples; identifiers such as device IPs can be
 masked. A local-LLM-only mode is provided for environments that forbid external egress</li>
 <li><strong>Webhooks are signed</strong> (HMAC), so subscribers can reject forged alarm.* events</li>
+<li><strong>The diagnostic hook (§7.1) can only execute scripts inside an allowlisted directory</strong>,
+and bindings change only through the rules repository (the git gate)</li>
 <li><strong>Direct reception on port 162 (Phase 2) requires a reception ACL and community validation.</strong>
 UDP sources can be spoofed; a source-address allowlist is the first line of defense. SNMPv3 USM
 (authentication and encryption) is supported and, combined with the ACL, hardens spoofing resistance.
