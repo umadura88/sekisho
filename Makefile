@@ -2,6 +2,7 @@
 
 build:
 	go build -o bin/trapgen ./cmd/trapgen
+	go build -o bin/sekisho ./cmd/sekisho
 
 test:
 	go test -race ./...
