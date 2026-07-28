@@ -133,7 +133,10 @@ func Run(r io.Reader, out io.Writer, opts Options) (Stats, error) {
 			stats.V2c++
 		}
 
-		trapOID := trapOIDOf(msg)
+		trapOID := "(no snmpTrapOID varbind)"
+		if o, ok := msg.TrapOID(); ok {
+			trapOID = o.String()
+		}
 		stats.Freq[trapOID]++
 
 		if opts.StatsOnly || (opts.Limit > 0 && printed >= opts.Limit) {
@@ -166,27 +169,6 @@ func Run(r io.Reader, out io.Writer, opts Options) (Stats, error) {
 	return stats, nil
 }
 
-// trapOIDOf returns the trap's identity OID: the snmpTrapOID.0 varbind for
-// v2c, or the RFC 3584-derived OID for a v1 trap (generic 0..5 map to the
-// standard trap OIDs; enterpriseSpecific(6) becomes enterprise.0.specific).
-func trapOIDOf(m *snmpcodec.Message) string {
-	if m.PDUType == snmpcodec.PDUTrapV1 {
-		if m.GenericTrap >= 0 && m.GenericTrap <= 5 {
-			std := snmpcodec.ObjectIdentifier{1, 3, 6, 1, 6, 3, 1, 1, 5, m.GenericTrap + 1}
-			return std.String()
-		}
-		return m.Enterprise.WithInstance(0, m.SpecificTrap).String()
-	}
-
-	snmpTrapOID := snmpcodec.ObjectIdentifier{1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0}
-	for _, vb := range m.Varbinds {
-		if vb.Name.Equal(snmpTrapOID) && vb.Value.Type == snmpcodec.TypeObjectIdentifier {
-			return vb.Value.OID.String()
-		}
-	}
-	return "(no snmpTrapOID varbind)"
-}
-
 // sourceOf returns the best available source identity: the v1 agent-addr
 // when present, otherwise the packet's IPv4 source address.
 func sourceOf(pkt *pcapio.Packet, m *snmpcodec.Message) string {
@@ -207,61 +189,11 @@ func varbindsOf(m *snmpcodec.Message) []varbindJSON {
 	for _, vb := range m.Varbinds {
 		out = append(out, varbindJSON{
 			OID:   vb.Name.String(),
-			Type:  typeName(vb.Value.Type),
-			Value: valueString(vb.Value),
+			Type:  vb.Value.Type.String(),
+			Value: vb.Value.DisplayString(),
 		})
 	}
 	return out
-}
-
-func typeName(t snmpcodec.ValueType) string {
-	switch t {
-	case snmpcodec.TypeInteger:
-		return "Integer"
-	case snmpcodec.TypeOctetString:
-		return "OctetString"
-	case snmpcodec.TypeNull:
-		return "Null"
-	case snmpcodec.TypeObjectIdentifier:
-		return "OID"
-	case snmpcodec.TypeIPAddress:
-		return "IpAddress"
-	case snmpcodec.TypeCounter32:
-		return "Counter32"
-	case snmpcodec.TypeGauge32:
-		return "Gauge32"
-	case snmpcodec.TypeTimeTicks:
-		return "TimeTicks"
-	case snmpcodec.TypeOpaque:
-		return "Opaque"
-	case snmpcodec.TypeCounter64:
-		return "Counter64"
-	case snmpcodec.TypeNoSuchObject:
-		return "NoSuchObject"
-	case snmpcodec.TypeNoSuchInstance:
-		return "NoSuchInstance"
-	case snmpcodec.TypeEndOfMibView:
-		return "EndOfMibView"
-	default:
-		return "Unknown"
-	}
-}
-
-func valueString(v snmpcodec.Value) string {
-	switch v.Type {
-	case snmpcodec.TypeInteger:
-		return fmt.Sprintf("%d", v.Int)
-	case snmpcodec.TypeOctetString, snmpcodec.TypeOpaque:
-		return string(v.Str)
-	case snmpcodec.TypeObjectIdentifier:
-		return v.OID.String()
-	case snmpcodec.TypeIPAddress:
-		return v.IP.String()
-	case snmpcodec.TypeCounter32, snmpcodec.TypeGauge32, snmpcodec.TypeTimeTicks, snmpcodec.TypeCounter64:
-		return fmt.Sprintf("%d", v.UInt)
-	default:
-		return ""
-	}
 }
 
 func writeSummary(out io.Writer, s *Stats) {
